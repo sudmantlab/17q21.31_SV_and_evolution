@@ -1,0 +1,783 @@
+---
+title: "NSF read depth"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+KG_readdepth <- read.delim("~/Documents/notebooks/cnv-plots/1000G_readdepth_NEW_CLEAN.txt")
+HGDP_readdepth <- read.delim("~/Documents/notebooks/cnv-plots/HGDP_readdepth_CLEAN.txt")
+SGDP_readdepth <- read.delim("~/Documents/datasets/genotype_CNV/SGDP_readdepth_NEW_CLEAN.txt")
+CAAPA2_readdepth <- CAAPA_readdepth #read this from the cnv-plotmaker script
+```
+
+```{r NSF}
+KG_readdepth_NSF <- KG_readdepth %>% 
+  filter(window_start > 46590669 -10000 & window_end < 46757464 + 10000) %>% 
+  distinct()
+
+HGDP_readdepth_NSF <- HGDP_readdepth %>%
+  filter(window_start > 46590669 -10000 & window_end < 46757464 + 10000) %>%
+  distinct()
+
+SGDP_readdepth_NSF <- SGDP_readdepth %>%
+  filter(window_start > 46590669 -10000 & window_end < 46757464 + 10000) %>%
+  distinct()
+
+NSF_readdepth <- rbind(KG_readdepth_NSF, HGDP_readdepth_NSF, SGDP_readdepth_NSF)
+
+NSF_and_KANSL <- merge(NSF_readdepth, tgp_hgdp_sgdp)
+
+NSF_and_KANSL_exons <- NSF_and_KANSL %>%
+  group_by(sample) %>%
+  filter(window_start >= 46590668-1000 & window_end <= 46711119+1000) %>% #exon0 to exon13 +/- a 1000
+  mutate(exons = median(read_depth, na.rm = TRUE))
+
+median_per_sample <- NSF_and_KANSL_exons %>%
+  group_by(sample) %>%  # Assuming SAMPLE is the column with sample names/IDs
+  summarise(median_read_depth = median(read_depth, na.rm = TRUE)) # Calculate the median of the read_depth column by sample
+
+View(median_per_sample)
+
+ggplot(data = NSF_and_KANSL %>% filter(superpop == 'AMR') %>% filter(complex_genotype == 'H1/H1'), aes(x = window_start, y = read_depth)) +
+  geom_point(size = 0.25) + 
+  geom_line(aes(group = sample))
+
+ggplot(data = median_per_sample, aes(x=median_read_depth, y=median_read_depth)) +
+  geom_point(size = 0.25)
+```
+
+```{r LRRC37A and LRRC37A2}
+KG_readdepth_LRRC37A <- KG_readdepth %>% 
+  filter(window_start > 46295131 -10000 & window_end < 46337794 + 10000)
+
+HGDP_readdepth_LRRC37A <- HGDP_readdepth %>%
+  filter(window_start > 46295131 -10000 & window_end < 46337794 + 10000) 
+
+SGDP_readdepth_LRRC37A <- SGDP_readdepth %>%
+  filter(window_start > 46295131 -10000 & window_end < 46337794 + 10000)
+
+KG_readdepth_LRRC37A2 <- KG_readdepth %>% 
+  filter(window_start > 46512468 -10000 & window_end < 46555646 + 10000) 
+
+HGDP_readdepth_LRRC37A2 <- HGDP_readdepth %>%
+  filter(window_start > 46512468 -10000 & window_end < 46555646 + 10000) 
+
+SGDP_readdepth_LRRC37A2 <- SGDP_readdepth %>%
+  filter(window_start > 46512468 -10000 & window_end < 46555646 + 10000) 
+
+LRRC37_readdepth <- rbind(SGDP_readdepth_LRRC37A2, SGDP_readdepth_LRRC37A, HGDP_readdepth_LRRC37A2, HGDP_readdepth_LRRC37A, KG_readdepth_LRRC37A2, KG_readdepth_LRRC37A)
+
+LRRC37_readdepth <- merge(LRRC37_readdepth, tgp_hgdp_sgdp)
+
+LRRC37A2_median <- LRRC37_readdepth %>% 
+  filter(window_start > 46512468 - 10000 & window_end < 46555646 + 10000) %>%
+  group_by(sample) %>%
+  summarise(LRRC37A2 = median(read_depth, na.rm = TRUE))
+
+LRRC37A_median <- LRRC37_readdepth %>% 
+  filter(window_start > 46295131 -10000 & window_end < 46337794 + 10000) %>%
+  group_by(sample) %>%
+  summarise(LRRC37A = median(read_depth, na.rm = TRUE))
+  
+LRRC37_readdepth <- LRRC37_readdepth %>%
+  left_join(LRRC37A_median, by = "sample") %>%
+  left_join(LRRC37A2_median, by = "sample")
+
+LRRC37_readdepth_summary <- LRRC37_readdepth %>%
+  distinct(sample, LRRC37A, LRRC37A2, pop, superpop, complex_genotype, dataset)
+
+
+ggplot(data = LRRC37_readdepth_summary, aes(x=LRRC37A, y = LRRC37A2)) +
+  geom_point()
+
+ggplot(data = LRRC37_readdepth, aes(x=window_start, y = read_depth)) +
+  geom_point(size = 0.25) +
+  geom_line(aes(group = sample)) +
+  facet_grid(complex_genotype~superpop)
+
+
+```
+
+```{r segdups}
+KG_readdepth_segdupA <- KG_readdepth %>% 
+  #filter(window_start > 46292047 -10000 & window_end < 46489410 + 10000)
+  filter(window_start > 46346376 -10000 & window_end < 46489410 + 10000)
+
+HGDP_readdepth_segdupA <- HGDP_readdepth %>%
+  #filter(window_start > 46292047 -10000 & window_end < 46489410 + 10000)
+  filter(window_start > 46346376 -10000 & window_end < 46489410 + 10000)
+
+SGDP_readdepth_segdupA <- SGDP_readdepth %>%
+  #filter(window_start > 46292047 -10000 & window_end < 46489410 + 10000)
+  filter(window_start > 46346376 -10000 & window_end < 46489410 + 10000)
+
+# CAAPA2_readdepth_segdupA <- CAAPA2_readdepth %>%
+#   filter(window_start > 46346376 -10000 & window_end < 46489410 + 10000)
+
+KG_readdepth_segdupB <- KG_readdepth %>% 
+  #filter(window_start > 46509624 -10000 & window_end < 46707123 + 10000)
+  filter(window_start > 46564311 -10000 & window_end < 46707123 + 10000)
+
+HGDP_readdepth_segdupB <- HGDP_readdepth %>%
+  #filter(window_start > 46509624 -10000 & window_end < 46707123 + 10000) 
+  filter(window_start > 46564311 -10000 & window_end < 46707123 + 10000)
+
+SGDP_readdepth_segdupB <- SGDP_readdepth %>%
+  #filter(window_start > 46509624 -10000 & window_end < 46707123 + 10000)
+  filter(window_start > 46564311 -10000 & window_end < 46707123 + 10000)
+
+segdup_readdepth <- rbind(KG_readdepth_segdupA, KG_readdepth_segdupB, HGDP_readdepth_segdupA, HGDP_readdepth_segdupB, SGDP_readdepth_segdupA, SGDP_readdepth_segdupB)
+
+# CAAPA2_readdepth_segdupA,
+
+segdup_readdepth <- left_join(segdup_readdepth, tgp_hgdp_sgdp, by = "sample")
+
+segdup_readdepth <- segdup_readdepth %>%
+  #mutate(pop = coalesce(pop.x, pop.y)) %>%
+  #mutate(superpop = coalesce(superpop.x, superpop.y)) %>%
+  #mutate(genotype = coalesce(genotype.x, genotype.y)) %>%
+  #mutate(complex_genotype = coalesce(complex_genotype.x, complex_genotype.y)) %>%
+  #mutate(dataset = coalesce(dataset.x, dataset.y)) %>%
+  dplyr::select(sample, chromosome, normalizing_factor, window_start, window_end, read_depth, dataset, genotype, complex_genotype, pop, superpop)
+
+segdupA_readdepth <- segdup_readdepth %>% 
+  #filter(window_start > 46512468 - 10000 & window_end < 46555646 + 10000) %>%
+  filter(window_start > 46346376 -10000 & window_end < 46489410 + 10000) %>%
+  group_by(sample) %>%
+  summarise(segdupA = median(read_depth, na.rm = TRUE))
+
+segdupB_readdepth <- segdup_readdepth %>% 
+  #filter(window_start > 46295131 -10000 & window_end < 46337794 + 10000) %>%
+  filter(window_start > 46564311 -10000 & window_end < 46707123 + 10000) %>%
+  group_by(sample) %>%
+  summarise(segdupB = median(read_depth, na.rm = TRUE))
+  
+segdup_readdepth <- segdup_readdepth %>%
+  left_join(segdupA_readdepth, by = "sample") %>%
+  left_join(segdupB_readdepth, by = "sample")
+
+segdup_readdepth_summary <- segdup_readdepth %>%
+  distinct(sample, segdupA, segdupB, pop, superpop, complex_genotype, dataset) %>%
+  mutate(segdup_sum = segdupA + segdupB)
+
+segdup_readdepth_summary_NO_H1D <- segdup_readdepth %>%
+  distinct(sample, segdupA, segdupB, pop, superpop, complex_genotype, dataset) %>%
+  filter(!str_detect(complex_genotype, "H1D")) %>%
+  mutate(segdup_sum = segdupA + segdupB)
+
+ggplot(segdup_readdepth_summary, aes(x = segdup_sum)) +
+  geom_histogram(binwidth = 0.5, color = "white", fill = "black") +
+  theme_minimal()
+
+(ggplot(segdup_readdepth_summary, aes(x = segdup_sum, fill = complex_genotype)) +
+  geom_histogram(binwidth = 0.05, color = "black") +
+  theme_minimal()) %>% plotly::ggplotly()
+
+ggplot(segdup_readdepth_summary, aes(x = segdup_sum, fill = complex_genotype)) +
+  geom_histogram(binwidth = 0.05, color = "black") +
+  theme_minimal() +
+  facet_grid(complex_genotype~., scales = "free_y")
+```
+
+```{r}
+segdup_readdepth_summary <- segdup_readdepth %>%
+  distinct(sample, segdupA, segdupB, pop, superpop, complex_genotype, dataset) %>%
+  mutate(segdup_sum = segdupA + segdupB,
+         CNV_NSF = case_when(
+           segdup_sum > 1.79 & segdup_sum < 2.6 ~ 'NSF',
+           segdup_sum > 2.6 & segdup_sum < 3.5 ~ 'NSF_D',
+           segdup_sum > 3.5 & segdup_sum < 4.4 ~ 'NSF_2D',
+           segdup_sum > 4.4 & segdup_sum < 5.4 ~ 'NSF_3D',
+           segdup_sum > 5.4 & segdup_sum < 6.4 ~ 'NSF_4D',
+           segdup_sum > 6.4 ~ 'NSF_4D+',
+           TRUE ~ 'NO GENOTYPE ASSIGNMENT YET'
+         ))
+
+#checking the assignments of CNV
+(ggplot(segdup_readdepth_summary, aes(x = segdup_sum, fill = CNV_NSF)) +
+  geom_histogram(binwidth = 0.05, color = "black") +
+  theme_minimal() + facet_grid(superpop~., scales = "free_y")) %>% plotly::ggplotly()
+```  
+
+```{r}
+library(tidyverse)
+library(hrbrthemes)
+library(viridis)
+
+custom_fill_colors <- c("#1d457f", "#535597", "#9B5F86", "#D36E69", "#EC8851", "#F2AF4A")
+
+segdup_readdepth_summary_final <- segdup_readdepth_summary %>%
+  mutate(superpop = ifelse(superpop == "CSA", "SAS", superpop))
+
+bp <- segdup_readdepth_summary_final %>%
+  ggplot(aes(x = superpop, y = segdup_sum, fill = superpop)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.6) +  # Suppress default outliers
+  geom_jitter(width = 0.25, size = 1.5, alpha = 0.25) +  # Add jittered points
+  scale_y_continuous(limits = c(0, 11), breaks = seq(2, 10, by = 2)) +  # Set y-axis range and breaks
+  stat_summary(fun = "median", geom = "point", size = 4, color = "red", shape = 18) +  # Median point
+  stat_summary(fun = "median", geom = "text", aes(label = round(..y.., 2)), 
+               vjust = -0.95, color = "white", size = 2.5) +  # Label median
+  scale_fill_manual(values = custom_fill_colors) +  # Apply custom colors
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(size = 11)
+  ) +
+  ggtitle("Basic Boxplot with Individual Points") +
+  xlab("")
+
+segdup_readdepth_summary_final %>%
+  ggplot(aes(x = superpop, y = segdup_sum, fill = superpop)) +
+  geom_violin(trim = FALSE, alpha = 0.6) +  # Violin plot without trimming
+  #geom_jitter(width = 0.2, size = 1.5, alpha = 0.5) +  # Overlay jittered points
+  scale_fill_viridis(discrete = TRUE, option = "A") +
+  theme_ipsum() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(size = 11)
+  ) +
+  ggtitle("Violin Plot with Individual Points") +
+  xlab("")
+
+vp_bp <- segdup_readdepth_summary_final %>%
+  ggplot(aes(x = superpop, y = segdup_sum, fill = superpop)) +
+  geom_violin(trim = FALSE) +  # Violin plot
+  geom_boxplot(width = 0.1, alpha = 0.8, outlier.shape = NA) +  # Boxplot overlay
+  stat_summary(fun = "median", geom = "point", size = 2, color = "white", shape = 18) +  # Median point
+  stat_summary(fun = "median", geom = "text", aes(label = round(..y.., 2)), 
+               vjust = -0.95, color = "white", size = 2.5) +  # Label median
+  scale_fill_manual(values = custom_fill_colors) +  # Apply custom colors
+  scale_y_continuous(limits = c(0, 10), breaks = seq(0, 10, by = 1)) +  # Set y-axis range and breaks
+  theme_minimal() +
+  theme(
+    legend.position = "none",     # Remove legend
+    axis.title.x = element_blank(),  # Remove x-axis title
+    axis.title.y = element_text(size = 12)  # Keep y-axis title (optional)
+  ) +
+  ylab("NSF CNV")  # Set y-axis label
+
+fn_out = paste("/Users/samvardhinisridharan/Documents/figures/maps and pies/final/median_read_depth_NSF.pdf")
+pdf(fn_out,width=8,height=4)
+print(vp_bp)
+dev.off()
+
+fn_out = paste("/Users/samvardhinisridharan/Documents/figures/maps and pies/final/median_read_depth_NSF_boxplot.pdf")
+pdf(fn_out,width=8,height=4)
+print(bp)
+dev.off()
+```
+
+```{r}
+# Load necessary libraries
+library(GGally)
+library(ggplot2)
+
+segdup_readdepth_summary_final %>%
+  ggplot(aes(x = complex_genotype, y = segdup_sum, fill = complex_genotype)) +
+  geom_violin(trim = FALSE) +  # Violin plot
+  #geom_boxplot(width = 0.1, alpha = 0.8, outlier.shape = NA) +  # Boxplot overlay
+  #stat_summary(fun = "median", geom = "point", size = 2, color = "white", shape = 18) +  # Median point
+  #stat_summary(fun = "median", geom = "text", aes(label = round(..y.., 2)), 
+               #vjust = -0.95, color = "white", size = 2.5) +  # Label median
+  #scale_fill_viridis() +
+  scale_y_continuous(limits = c(0, 10), breaks = seq(0, 10, by = 1)) +  # Set y-axis range and breaks
+  theme_minimal() +
+  theme(
+    legend.position = "none",     # Remove legend
+    axis.title.x = element_blank(),  # Remove x-axis title
+    axis.title.y = element_text(size = 12)  # Keep y-axis title (optional)
+  ) +
+  ylab("NSF CNV")  # Set y-axis label
+```
+
+```{r}
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(ggh4x)  # For advanced facet controls
+
+
+custom_fill_colors <- c("#1d457f","#535597", "#9B5F86", "#D36E69", "#EC8851", "#F2AF4A")
+
+segdup_readdepth_summary_final_HIST = segdup_readdepth_summary_final %>% 
+  separate(complex_genotype, into = c("haplotypeA", "haplotypeB"), sep = "/") %>%
+  mutate(
+    haplotypeA = ifelse(haplotypeA == 'H1DD', 'H1D', haplotypeA),
+    haplotypeB = ifelse(haplotypeB == 'H1DD', 'H1D', haplotypeB)
+  ) %>%
+  mutate(segdup_sum = segdupA + segdupB,
+         CNV_NSF = case_when(
+           segdup_sum > 1.79 & segdup_sum < 2.6 ~ 'NSF',
+           segdup_sum >= 2.6 & segdup_sum < 3.6 ~ 'NSF_D',
+           segdup_sum >= 3.6 & segdup_sum < 4.4 ~ 'NSF_2D',
+           segdup_sum >= 4.4 & segdup_sum < 5.4 ~ 'NSF_3D',
+           segdup_sum >= 5.4 & segdup_sum < 6.4 ~ 'NSF_4D',
+           segdup_sum >= 6.4 ~ 'NSF_4D+',
+           TRUE ~ 'NO GENOTYPE ASSIGNMENT YET'
+         )) %>%
+   mutate(CNV_NSF = factor(CNV_NSF, levels = c("NSF", "NSF_D", "NSF_2D", "NSF_3D", "NSF_4D", "NSF_4D+")))
+
+write.table(segdup_readdepth_summary_final_HIST, 
+            file = "~/Documents/datasets/segdup_readdepth_summary_final_HIST_NSF.tsv", 
+            sep = "\t", 
+            row.names = FALSE, 
+            quote = FALSE)
+
+# Create the 4x4 histogram matrix plot with conditional borders
+hist_matrix <- ggplot(segdup_readdepth_summary_final_HIST, aes(x = segdup_sum, fill = CNV_NSF)) +
+  geom_histogram(bins = 49) +  # Histogram in every box
+  facet_grid2(haplotypeB ~ haplotypeA, switch = "both", scales = "free_y", 
+              independent = "y", drop = TRUE) +  # Use ggh4x's facet_grid2
+  theme_minimal() +  # Apply minimal theme
+  scale_fill_manual(values = custom_fill_colors) +  # Use custom colors
+  scale_x_continuous(limits = c(0, 11), breaks = seq(0, 11, by = 2), expand = c(0, 0)) +  # X-axis: 0 to 11, by 2
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 0.6),  # Add border around each panel
+    axis.line.x = element_line(color = "black", size = 0.6),  # X-axis line
+    axis.line.y = element_line(color = "black", size = 0.6),  # Y-axis line
+    axis.ticks = element_line(color = "black", size = 0.5),  # Ticks on both axes
+    axis.ticks.length = unit(0.2, "cm"),  # Set tick length
+    strip.text = element_text(face = "bold"),  # Bold facet labels
+    panel.grid = element_blank(),  # Remove grid lines
+    panel.spacing = unit(1, "lines"),  # Add space between panels for clarity
+    strip.placement = "outside",  # Place facet labels outside the plot
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    legend.position = "bottom"  # Legend at the bottom
+  ) +
+  guides(fill = guide_legend(nrow = 1))  # Legend in a single row
+
+# Display the plot
+print(hist_matrix)
+
+
+dot_matrix <- ggplot(segdup_readdepth_summary_final_HIST, aes(x = segdup_sum, y = 0, color = CNV_NSF, fill = CNV_NSF)) +
+  geom_jitter(height = 0.3, width = 0.15, size = 1.2, shape = 21, stroke = 0.2) +
+  facet_grid2(haplotypeB ~ haplotypeA, switch = "both", scales = "free_y", 
+              independent = "y", drop = TRUE) +
+  theme_minimal() +
+  scale_fill_manual(values = custom_fill_colors) +
+  scale_color_manual(values = custom_fill_colors) +
+  scale_x_continuous(limits = c(0, 11), breaks = seq(0, 11, by = 2), expand = c(0.05, 0.05)) +  
+  scale_y_continuous(NULL, breaks = NULL) +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 0.6),
+    axis.line.x = element_line(color = "black", size = 0.6),
+    axis.ticks.x = element_line(color = "black", size = 0.5),
+    axis.ticks.length = unit(0.2, "cm"),
+    strip.text = element_text(face = "bold"),
+    panel.grid = element_blank(),
+    panel.spacing.x = unit(2, "lines"), 
+    panel.spacing.y = unit(1, "lines"),
+    strip.placement = "outside",
+    plot.margin = margin(10, 10, 10, 10),
+    legend.position = "bottom"
+  ) +
+  guides(fill = guide_legend(nrow = 1), color = "none")
+
+# Display the plot
+print(dot_matrix)
+
+fn_out = paste("/Users/samvardhinisridharan/Documents/figures/maps and pies/final/dot_matrix_histmatrix_NSF.pdf")
+pdf(fn_out,width=16,height=8)
+print(dot_matrix)
+dev.off()
+
+
+
+#fn_out = paste("/Users/samvardhinisridharan/Documents/figures/maps and pies/final/histmatrix_NSF.pdf")
+#pdf(fn_out,width=8,height=8)
+#print(hist_matrix)
+#dev.off()
+
+
+
+t_sum = segdup_readdepth_summary_final_HIST %>% 
+  mutate(NSF = case_match(CNV_NSF, 
+                              "NSF" ~ 2,
+                              "NSF_D" ~ 3,
+                              "NSF_2D" ~ 4,
+                              "NSF_3D" ~ 5,
+                              "NSF_4D" ~ 6,
+                              "NSF_4D+" ~ 7)) %>%
+  filter(!is.na(haplotypeB)) %>%
+  group_by(haplotypeB,haplotypeA) %>%
+  mutate(total = n()) %>%
+  group_by(haplotypeB,haplotypeA,NSF,total) %>%
+  summarize(n=n())
+
+g=ggplot(t_sum)
+g=g+geom_point(aes(x=NSF, y=1, size=n/total))+
+  facet_grid2(haplotypeB ~ haplotypeA, switch = "both", scales = "free_y", 
+              independent = "y", drop = TRUE)+
+  scale_color_brewer(palette="Set1")+
+  theme_bw(base_size=6)+
+  scale_y_continuous("", breaks=c())+
+  scale_x_continuous("NSF copy", lim=c(1.5,7.5),breaks=seq(2,8))+
+  theme(panel.grid=element_blank())+
+  scale_size_area(max_size=8)
+fn_out = "/Users/samvardhinisridharan/Documents/figures/maps and pies/final/dot_plot_peter_histmatrix_NSF.pdf"
+pdf(fn_out,width=6,height=1.8)
+print(g)
+dev.off()
+
+```
+
+
+```{r general information needed for mapping}
+library(tidyverse)
+library(cowplot)   # for theme_minimal_grid()
+library(sf)        # for manipulation of simple features objects
+library(rworldmap) # for getMap()
+library(scatterpie)
+library(ggrepel)
+library(ggforce)
+library(remotes)
+library(rnaturalearth)
+library(sp)
+library(ztable)
+library(PNWColors)
+
+world_sf <- st_as_sf(getMap(resolution = "li"))
+
+# projection outline in long-lat coordinates
+lats <- c(
+  90:-90, # right side down
+  -90:0, 0:-90, # third cut bottom
+  -90:0, 0:-90, # second cut bottom
+  -90:0, 0:-90, # first cut bottom
+  -90:90, # left side up
+  90:0, 0:90, # cut top
+  90 # close
+)
+longs <- c(
+  rep(180, 181), # right side down
+  rep(c(80.01, 79.99), each = 91), # third cut bottom
+  rep(c(-19.99, -20.01), each = 91), # second cut bottom
+  rep(c(-99.99, -100.01), each = 91), # first cut bottom
+  rep(-180, 181), # left side up
+  rep(c(-40.01, -39.99), each = 91), # cut top
+  180 # close
+)
+
+goode_outline <- 
+  list(cbind(longs, lats)) %>%
+  st_polygon() %>%
+  st_sfc(
+    crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+  )
+
+# now we need to work in transformed coordinates, not in long-lat coordinates
+crs_goode <- "+proj=igh"
+goode_outline <- st_transform(goode_outline, crs = crs_goode)
+
+# get the bounding box in transformed coordinates and expand by 10%
+xlim <- st_bbox(goode_outline)[c("xmin", "xmax")]*1.1
+ylim <- st_bbox(goode_outline)[c("ymin", "ymax")]*1.1
+
+# turn into enclosing rectangle
+goode_encl_rect <- 
+  list(
+    cbind(
+      c(xlim[1], xlim[2], xlim[2], xlim[1], xlim[1]), 
+      c(ylim[1], ylim[1], ylim[2], ylim[2], ylim[1])
+    )
+  ) %>%
+  st_polygon() %>%
+  st_sfc(crs = crs_goode)
+
+# calculate the area outside the earth outline as the difference
+# between the enclosing rectangle and the earth outline
+goode_without <- st_difference(goode_encl_rect, goode_outline)
+```
+
+```{r transforming the data into what is required to make a map}
+all_KANSL1_genotypes <- read_csv("~/Documents/datasets/metadata/supplementary_table_1_FINAL.csv")
+
+all_KANSL1_and_NSF_genotypes <- merge(all_KANSL1_genotypes, segdup_readdepth_summary, by = c("sample", "pop", "superpop", "dataset", "complex_genotype")) %>%
+  dplyr::select(-segdupA, -segdupB)
+
+#print(dim(all_KANSL1_and_NSF_genotypes))
+
+sample_names_TRIOS <- read.table("~/Documents/datasets/metadata/sample_names_TRIOS.txt", quote="\"", comment.char="")
+
+all_KANSL1_and_NSF_genotypes_FINAL <- all_KANSL1_and_NSF_genotypes %>%
+  filter(!(sample %in% sample_names_TRIOS$V1))
+
+#print(dim(all_KANSL1_and_NSF_genotypes_FINAL))
+
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Yoruba'] <- 'YRI'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Punjabi'] <- 'PJL'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Japanese'] <- 'JPT'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'JPL'] <- 'JPT'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Finnish'] <- 'FIN'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'English'] <- 'GBR'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Esan'] <- 'ESN'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Colombian'] <- 'CLM'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Bengali'] <- 'BEB'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'BedouinB'] <- 'Bedouin'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Bergamo'] <- 'Bergamo Italian'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Northern Han'] <- 'Han'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Papuan,Papuan Highlands'] <- 'Papuan'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Papuan,Papuan Sepik'] <- 'Papuan'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Eskimo_Chaplin'] <- 'Eskimo'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Eskimo_Naukan'] <- 'Eskimo'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Eskimo_Sireniki'] <- 'Eskimo'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Tuscan'] <- 'TSI'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'BantuKenya'] <- 'Bantu Kenya'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Crete'] <- 'Greek'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Mayan'] <- 'Maya'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'Papuan Sepik'] <- 'Papuan'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'BantuHerero'] <- 'Bantu South Africa'
+all_KANSL1_and_NSF_genotypes_FINAL$pop[all_KANSL1_and_NSF_genotypes_FINAL$pop == 'BantuTswana'] <- 'Bantu South Africa'
+
+# Calculate the average CNV for each population
+average_CNV_table <- all_KANSL1_and_NSF_genotypes_FINAL %>%
+  dplyr::group_by(pop) %>%
+  dplyr::summarize(average_CNV_NSF = mean(segdup_sum, na.rm = TRUE)) %>%
+  ungroup()
+
+# Summarize the haplotype counts by superpop
+summary_table <- all_KANSL1_and_NSF_genotypes_FINAL %>%
+  dplyr::group_by(pop, CNV_NSF) %>%
+  dplyr::summarize(count = n(), .groups = 'drop')
+
+# Calculate the total counts per population
+total_counts <- summary_table %>%
+  dplyr::group_by(pop) %>%
+  dplyr::summarize(total = sum(count), .groups = 'drop')
+
+# Merge the total counts with the summary table and calculate proportions
+summary_table <- summary_table %>%
+  left_join(total_counts, by = "pop") %>%
+  mutate(proportion = count / total) %>%
+  dplyr::select(pop, CNV_NSF, count, proportion)
+
+# Pivot the table to get populations with CNV_NSF proportions in wide format
+final_table <- summary_table %>%
+  pivot_wider(names_from = CNV_NSF, values_from = proportion, values_fill = list(proportion = 0))
+
+# Summarize the data to have one row per population
+final_summary <- final_table %>%
+  group_by(pop) %>%
+  summarise(
+    total_count = sum(count),
+    NSF = sum(NSF),
+    NSF_D = sum(NSF_D), 
+    NSF_2D = sum(NSF_2D),
+    NSF_3D = sum(NSF_3D),
+    NSF_4D = sum(NSF_4D),
+    `NSF_4D+` = sum(`NSF_4D+`)
+  )
+
+final_summary <- merge(final_summary, average_CNV_table, by = c("pop"))
+
+write.csv(final_summary, "~/Documents/datasets/metadata/supplementary_table_5_FINAL.csv", row.names = FALSE)
+
+```
+
+```{r}
+df <- read.csv("~/Documents/datasets/metadata/supplementary_table_5_FINAL.csv")
+
+df <- df %>% filter(total_count > 5)
+
+METADATAsubset_4099 <- read_table("~/Documents/datasets/metadata/METADATAsubset_4099.tsv")
+
+unique_metadata_combinations <- METADATAsubset_4099 %>%
+  dplyr::select(pop = hgdp_tgp_meta.Population, 
+         latitude = hgdp_tgp_meta.Latitude, 
+         longitude = hgdp_tgp_meta.Longitude) %>%
+  distinct()
+
+head(data)
+
+merged_data <- left_join(df, unique_metadata_combinations, by = 'pop')
+
+merged_data$latitude[merged_data$pop == 'Mongolian'] <- 46.8625
+merged_data$longitude[merged_data$pop == 'Mongolian'] <- 103.8467
+merged_data$latitude[merged_data$pop == 'Bantu Kenya'] <- -0.0236
+merged_data$longitude[merged_data$pop == 'Bantu Kenya'] <- 37.9062
+merged_data$latitude[merged_data$pop == 'Bantu South Africa'] <- -33.9221
+merged_data$longitude[merged_data$pop == 'Bantu South Africa'] <- 18.4231
+merged_data$latitude[merged_data$pop == 'Bergamo Italian'] <- 45.6942
+merged_data$longitude[merged_data$pop == 'Bergamo Italian'] <- 9.6707
+merged_data$latitude[merged_data$pop == 'Biaka'] <- 6.6111
+merged_data$longitude[merged_data$pop == 'Biaka'] <- 20.9394
+merged_data$latitude[merged_data$pop == 'Bougainville'] <- -6.3754
+merged_data$longitude[merged_data$pop == 'Bougainville'] <- 155.3807
+merged_data$latitude[merged_data$pop == 'Eskimo'] <- 61.0137
+merged_data$longitude[merged_data$pop == 'Eskimo'] <- 99.1967
+merged_data$latitude[merged_data$pop == 'Mbuti'] <- -4.0383
+merged_data$longitude[merged_data$pop == 'Mbuti'] <- 21.7587
+merged_data$latitude[merged_data$pop == 'Palestinian'] <- 28
+merged_data$longitude[merged_data$pop == 'Palestinian'] <- 33
+merged_data$latitude[merged_data$pop == 'Druze'] <- 24
+merged_data$longitude[merged_data$pop == 'Druze'] <- 34 
+merged_data$longitude[merged_data$pop == 'Brahui'] <- 60 #updated for South Asia
+merged_data$longitude[merged_data$pop == 'Hazara'] <- 60 #updated for South Asia
+```
+
+```{r NSF duplication as pie charts}
+# Define a maximum radius for the pies (tweak this based on visual needs)
+max_radius <- 2.5e5 + (1.2e5 * (200 / 2) / 100)
+
+CNV_points_sf <- merged_data %>% st_as_sf(coords = c("longitude","latitude"), crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+
+CNV_points_sf_t <- st_transform(CNV_points_sf, crs=crs_goode) %>% 
+  as_tibble() %>%
+  mutate(long=geometry %>% st_coordinates() %>% .[,"X"], lat=geometry %>% st_coordinates() %>% .[,"Y"]) 
+
+custom_fill_colors <- c("#1d457f","#535597", "#9B5F86", "#D36E69", "#EC8851", "#F2AF4A")
+custom_border_colors <- c("white","white", "white", "white", "white", "white")
+
+scaled_data = CNV_points_sf_t
+
+# Define the limits for zoom (replace with the desired values based on your data)
+lon_min <- min(scaled_data$long) - 5  # A small buffer around the minimum longitude
+lon_max <- max(scaled_data$long) + 5  # A small buffer around the maximum longitude
+lat_min <- min(scaled_data$lat) - 5   # A small buffer around the minimum latitude
+lat_max <- max(scaled_data$lat) + 5   # A small buffer around the maximum latitude
+
+# size_legend_df <- data.frame(
+#   long = c(-25, -25, -25, -25), 
+#   lat = c(150, 150, 150, 150),
+#   size = c(10, 50, 100, 200)  # These are the sizes you want in the legend
+# )
+
+# Calculate consistent radii based on sample size
+scaled_data <- scaled_data %>%
+  mutate(r = sqrt(as.numeric(total_count)) / max(sqrt(as.numeric(total_count))) * max_radius)
+
+g = ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85", color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_scatterpie(mapping=aes(x=long, y=lat, group=pop, r=129804.6*1.75),
+                  data=scaled_data,
+                  cols=c("NSF", "NSF_D", "NSF_2D", "NSF_3D", "NSF_4D."),
+                  color = "white", # Set border color to white
+                  lwd = 0.05) +    # Thinner borders
+  coord_sf(crs = crs_goode, default_crs = crs_goode, 
+           xlim = c(lon_min, lon_max),   # Zoom into the specific longitude range
+           ylim = c(lat_min, lat_max)) +  # Zoom into the specific latitude range
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "bottom",     
+        legend.box.background = element_blank(), 
+        legend.background = element_blank()) +   
+  scale_fill_manual(values = custom_fill_colors, name = "NSF dup") + 
+  scale_color_manual(values = custom_border_colors, name = "NSF dup") 
+  #geom_point(data = size_legend_df, aes(x = long, y = lat, size = size), shape = 21, fill = "white", color = "grey")  
+  # scale_size_continuous(name = "sample size (N)", 
+  #                       breaks = c(10, 50, 100, 200),  # Match the sizes to the pies
+  #                       labels = c("10", "50", "100", "200"),
+  #                       guide = guide_legend(nrow = 2))  # Set legend items in new lines
+
+fn_out = paste("/Users/samvardhinisridharan/Documents/figures/maps and pies/final/NSF_global_NOT_scaled.pdf")
+pdf(fn_out,width=8,height=4)
+print(g)
+dev.off()
+```
+
+```{r NSF duplications as points}
+data <- final_summary %>% filter(total_count > 5)
+
+METADATAsubset_4099 <- read_table("~/Documents/datasets/metadata/METADATAsubset_4099.tsv")
+
+unique_metadata_combinations <- METADATAsubset_4099 %>%
+  dplyr::select(pop = hgdp_tgp_meta.Population, 
+         latitude = hgdp_tgp_meta.Latitude, 
+         longitude = hgdp_tgp_meta.Longitude) %>%
+  distinct()
+
+head(data)
+
+merged_data <- left_join(data, unique_metadata_combinations, by = 'pop')
+
+merged_data$latitude[merged_data$pop == 'Mongolian'] <- 46.8625
+merged_data$longitude[merged_data$pop == 'Mongolian'] <- 103.8467
+merged_data$latitude[merged_data$pop == 'Bantu Kenya'] <- -0.0236
+merged_data$longitude[merged_data$pop == 'Bantu Kenya'] <- 37.9062
+merged_data$latitude[merged_data$pop == 'Bantu South Africa'] <- -33.9221
+merged_data$longitude[merged_data$pop == 'Bantu South Africa'] <- 18.4231
+merged_data$latitude[merged_data$pop == 'Bergamo Italian'] <- 45.6942
+merged_data$longitude[merged_data$pop == 'Bergamo Italian'] <- 9.6707
+merged_data$latitude[merged_data$pop == 'Biaka'] <- 6.6111
+merged_data$longitude[merged_data$pop == 'Biaka'] <- 20.9394
+merged_data$latitude[merged_data$pop == 'Bougainville'] <- -6.3754
+merged_data$longitude[merged_data$pop == 'Bougainville'] <- 155.3807
+merged_data$latitude[merged_data$pop == 'Eskimo'] <- 61.0137
+merged_data$longitude[merged_data$pop == 'Eskimo'] <- 99.1967
+merged_data$latitude[merged_data$pop == 'Mbuti'] <- -4.0383
+merged_data$longitude[merged_data$pop == 'Mbuti'] <- 21.7587
+merged_data$latitude[merged_data$pop == 'Palestinian'] <- 28
+merged_data$longitude[merged_data$pop == 'Palestinian'] <- 33
+merged_data$latitude[merged_data$pop == 'Druze'] <- 24
+merged_data$longitude[merged_data$pop == 'Druze'] <- 34 
+merged_data$longitude[merged_data$pop == 'Brahui'] <- 60 #updated for South Asia
+merged_data$longitude[merged_data$pop == 'Hazara'] <- 60 #updated for South Asia
+
+# Apply jitter to longitude and latitude in their original coordinates
+CNV_points_sf <- merged_data %>% 
+  mutate(jittered_longitude = jitter(longitude, amount = 2),   # Adjust amount as needed
+         jittered_latitude = jitter(latitude, amount = 2)) %>%  # Adjust amount as needed
+  st_as_sf(coords = c("jittered_longitude", "jittered_latitude"), crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+
+# Transform the jittered points to the Goode's homolosine projection
+CNV_points_sf_t <- st_transform(CNV_points_sf, crs = crs_goode) %>% 
+  as_tibble() %>%
+  mutate(long = geometry %>% st_coordinates() %>% .[,"X"], 
+         lat = geometry %>% st_coordinates() %>% .[,"Y"])
+
+#custom_fill_colors <- c("#1d457f","#535597", "#9B5F86", "#D36E69", "#EC8851", "#F2AF4A")
+#custom_border_colors <- c("white","white", "white", "white", "white", "white")
+
+scaled_data = CNV_points_sf_t
+
+# Define the limits for zoom (replace with the desired values based on your data)
+lon_min <- min(scaled_data$long) - 5  # A small buffer around the minimum longitude
+lon_max <- max(scaled_data$long) + 5  # A small buffer around the maximum longitude
+lat_min <- min(scaled_data$lat) - 5   # A small buffer around the minimum latitude
+lat_max <- max(scaled_data$lat) + 5   # A small buffer around the maximum latitude
+
+# size_legend_df <- data.frame(
+#   long = c(-25, -25, -25, -25), 
+#   lat = c(150, 150, 150, 150),
+#   size = c(10, 50, 100, 200)  # These are the sizes you want in the legend
+# )
+
+# Calculate consistent radii based on sample size
+scaled_data <- scaled_data %>%
+  mutate(r = sqrt(as.numeric(total_count)) / max(sqrt(as.numeric(total_count))) * max_radius)
+
+#pnw_colors <- pnw_palette("Bay", 10, type = "continuous")
+
+g <- ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85", color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_jitter(data = scaled_data, 
+              aes(x = long, y = lat, color = average_CNV_NSF, size = total_count, alpha = 0.3),  # Map size to total_count
+              width = 2,  # Increase horizontal jitter
+              height = 2) +  # Increase vertical jitter
+  coord_sf(crs = crs_goode, default_crs = crs_goode, 
+           xlim = c(lon_min, lon_max),  # Zoom into the specific longitude range
+           ylim = c(lat_min, lat_max)) +  # Zoom into the specific latitude range
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "bottom",     
+        legend.box.background = element_blank(), 
+        legend.background = element_blank()) +
+  scale_color_viridis_c(name = " ") +  # Use Viridis color scale
+  scale_size_continuous(name = "N", range = c(1, 9)) 
+
+fn_out = paste("/Users/samvardhinisridharan/Documents/figures/maps and pies/final/NSF_averages.pdf")
+pdf(fn_out,width=8,height=4)
+print(g)
+dev.off()
+```
+
