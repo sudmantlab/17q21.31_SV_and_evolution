@@ -1,0 +1,404 @@
+---
+title: "Figure1.Rmd"
+author: "Samvardhini"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r Supplemental Figure 1B}
+fn="/Users/samvardhinisridharan/Documents/pgrtk/target/release/Renamed_All_212samples.bed"
+t_dists = read.table("~/Downloads/cleaned_no_chm13.jaccard",header=T,sep="\t",comment.char="",check.names=FALSE) #all 27 unique samples
+
+dmat_subset = t_dists %>% 
+  transmute(hap1=group.a,hap2=group.b,dist=jaccard.distance) %>%
+  arrange(hap1,hap2) %>%
+  pivot_wider(names_from = hap2, values_from = dist) %>%
+  column_to_rownames(var="hap1") %>% 
+  as.matrix
+
+c=hclust(as.dist(dmat_subset),method="average")
+struc_phy = as.phylo(c)
+
+p = ggtree(rooted_tree) +
+  #geom_text(aes(label=label), hjust = -0.2) +
+  xlim_tree(0.1)
+
+rooted_tree_pruned <- drop.tip(rooted_tree, tip = c("chr17:45275488-46921902", "chr17:46129277-47783341"))
+
+p = ggtree(rooted_tree_pruned) +
+  #geom_text(aes(label=label), hjust = -0.2) +
+  xlim_tree(0.1)
+  #geom_text2(aes(subset = isTip, label = node), hjust = -0.3, size = 2.5) +
+  #xlim_tree(0.1) +
+  #geom_text2(aes(label = node), size = 2.5, hjust = -0.3) +
+  #xlim_tree(0.1)
+  
+p1 <- flip(p, 35, 41)
+p2 <- flip(p1, 28, 34)
+
+tip_labels <- as.character(rooted_tree$tip.label)
+
+t <- read.table(fn, header=FALSE, sep="\t", comment.char ="", col.names = c("contig", "bstart", "bend", "binf"), skip = 1) %>%
+  mutate(
+    bID = str_split(binf, ":", simplify = TRUE)[, 1],
+    bdunno = str_split(binf, ":", simplify = TRUE)[, 2],
+    bOrientation = as.numeric(str_split(binf, ":", simplify = TRUE)[, 3]),
+    entryix = str_split(binf, ":", simplify = TRUE)[, 4],
+    exitix = str_split(binf, ":", simplify = TRUE)[, 5]
+  ) %>%
+  filter(contig %in% tip_labels)
+
+t_filtered <- t %>%
+  mutate(size = bend - bstart) %>%
+  group_by(bID) %>%
+  mutate(count = n()) %>%
+  ungroup()
+
+t_filtered <- t %>%
+  mutate(size = bend - bstart) %>%
+  group_by(bID) %>%
+  mutate(count = n()) %>%
+  ungroup()
+
+# Define thresholds using the IQR method
+size_iqr <- IQR(t_filtered$size, na.rm = TRUE)
+size_threshold_low <- quantile(t_filtered$size, 0.25, na.rm = TRUE)
+#size_threshold_high <- quantile(t_filtered$size, 0.75, na.rm = TRUE) + 1.5 * size_iqr
+
+count_iqr <- IQR(t_filtered$count, na.rm = TRUE)
+count_threshold_low <- quantile(t_filtered$count, 0.25, na.rm = TRUE)
+
+# Filter data
+t_cleaned <- t_filtered %>%
+  filter(size >= size_threshold_low | count > count_threshold_low)
+
+t <- t_cleaned
+
+t=t_cleaned %>% 
+  group_by(contig) %>%
+  mutate(seg_len = bend-bstart) %>%
+  mutate(rel_end = cumsum(seg_len)) %>%
+  mutate(rel_start = lag(rel_end,default=0)) %>%
+  separate(contig,c("sample_id","sample_hap",'sample_contig'),sep="#|\\.",remove=FALSE) %>%
+  dplyr::select(-c(sample_hap,sample_contig)) #%>%
+  #mutate(collapsed_assembly = sample_id %in% bad_samples)
+
+hap_sums = t %>% 
+            mutate(bID_d = paste(bID,".",bOrientation,sep="")) %>%
+            group_by(contig) %>%
+            summarize(hap_struc = paste0(bID,collapse="-"),
+                      hap_struc_d = paste0(bID_d,collapse="-"))
+
+t = inner_join(t,hap_sums,by="contig")
+
+hap_info = t %>% group_by(contig,sample_id,hap_struc,hap_struc_d) %>%
+                 summarize(hap_block_start = min(bstart))
+
+t=inner_join(t,hap_info,by=c("contig","hap_struc","sample_id","hap_struc_d"))
+
+t=t %>% mutate(rel_start2 = bstart-hap_block_start,
+               rel_end2 = bend-hap_block_start)
+
+# Step 1: Summarize unique structures
+unique_structures <- hap_sums %>%
+  group_by(hap_struc_d) %>%
+  summarise(n = n(), .groups = 'drop')
+
+t_unique <- t %>%
+  group_by(hap_struc_d) %>%
+  ungroup() %>%
+  left_join(unique_structures, by = "hap_struc_d") %>%
+  arrange(desc(n))
+
+# Step 3: Create unique y_label for each sample using sample_id
+t_unique <- t_unique %>%
+  filter(!sample_id %in% c("chr19_hap1_hsa17:22562619-21095628", "chr19_pat_hsa17:32381006-18094864", "chm13", "chr19_hap2_hsa17:20706827-19239702", "NA210934", "HG00320", "HG00514")) %>%
+  mutate(
+    y_label = paste0("(", n, ")", contig) # Use sample_id directly for unique labels
+  ) %>%
+  filter(contig %in% tip_labels)
+
+# Define color palette
+color_palette <- c(
+  "#00496F", "#808080", "#59A082", "#94B669", "#C4C856", "#EDB82A", "#EDCC3C", "#cbcbcb", 
+  "#DD4124", "#E97C07", "#EDA417", "#CFCC52", "#086989", "#0C7996", "#ED9004", "#808080"
+)
+
+# First, ensure bID is a factor and matches the names of your color palette
+bID_order <- c(0, 1, 10, 11, 12, 13, 14, 2, 3, 4, 5, 6, 7, 8, 9)
+color_dict <- setNames(color_palette[seq_along(bID_order)], as.character(bID_order))
+
+# Then use scale_fill_manual
+g <- ggplot(t_unique, aes(y = contig)) +
+  geom_gene_arrow(
+    mapping = aes(
+      xmin = rel_start2,
+      xmax = rel_end2,
+      fill = as.character(bID),  # ensure bID is a string to match color_dict names
+      forward = !bOrientation
+    ),
+    arrowhead_height = unit(4.8, "mm"), 
+    arrowhead_width = unit(4.8, "mm"),
+    arrow_body_height = unit(3.2, "mm"),
+    size = 0.1
+  ) +
+  theme_bw() + 
+  labs(y = "") + 
+  scale_fill_manual(values = color_dict) + 
+  theme_void() +  # removes grid, axis lines, ticks, and background
+  theme(
+    axis.text.y = element_text(size = 10),  # keep y-axis labels if needed
+    plot.margin = margin(0, 0, 0, 0)
+  ) +
+  theme(legend.position = "none")
+
+structure_contig_counts <- t %>%
+  distinct(contig, hap_struc_d) %>%
+  filter(hap_struc_d %in% unique(t_unique$hap_struc_d)) %>%
+  group_by(hap_struc_d) %>%
+  summarise(n_contigs = n_distinct(contig), .groups = "drop")
+
+g %>% insert_left(p2, width = 0.3)
+
+# Step 5: Save to PDF
+pdf("~/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/SupplementalFigure1B.pdf", width = 11, height = 8.5 )
+print(g %>% insert_left(p2, width = 0.3))
+dev.off()
+```
+
+```{r Supplemental Figure 2}
+
+# Define color palette
+color_palette <- c(
+  "#00496F", "#808080", "#59A082", "#94B669", "#C4C856", "#EDB82A", "#EDCC3C", "#cbcbcb", 
+  "#DD4124", "#E97C07", "#EDA417", "#CFCC52", "#086989", "#0C7996", "#ED9004", "#808080"
+)
+
+# First, ensure bID is a factor and matches the names of your color palette
+bID_order <- c(0, 1, 10, 11, 12, 13, 14, 2, 3, 4, 5, 6, 7, 8, 9)
+color_dict <- setNames(color_palette[seq_along(bID_order)], as.character(bID_order))
+
+# Load required libraries
+library(dplyr)
+library(tidyverse)
+library(gggenes)
+library(ggplot2)
+
+# Define input file path
+fn <- "/Users/samvardhinisridharan/Documents/pgrtk/target/release/ALL_PRIMATES_CHIMP_BONOBO_14.bed"
+
+# Read and process BED file
+t <- read.table(fn, header = FALSE, sep = "\t", comment.char = "", 
+                col.names = c("contig", "bstart", "bend", "binf"), skip = 1) %>%
+  mutate(
+    bID = str_split(binf, ":", simplify = TRUE)[, 1],
+    bdunno = str_split(binf, ":", simplify = TRUE)[, 2],
+    bOrientation = as.numeric(str_split(binf, ":", simplify = TRUE)[, 3]),
+    entryix = str_split(binf, ":", simplify = TRUE)[, 4],
+    exitix = str_split(binf, ":", simplify = TRUE)[, 5]
+  ) 
+
+t_filtered_summary <- t %>%
+  group_by(contig, bID, bOrientation) %>%
+  summarise(n_bID = n(), .groups = "drop")
+
+t_summary_structures <- t_filtered_summary %>%
+  filter(bID == 4) %>%
+  group_by(contig) %>%
+  mutate(number_NSF = case_when(
+    n_bID == 1 ~ "1",
+    n_bID == 2 ~ "2",
+    n_bID == 3 ~ "3",
+    n_bID == 4 ~ "4",
+    TRUE ~ NA_character_
+  ))
+
+# Step 1: Assign for bID == 0
+t_summary_structures_0 <- t_filtered_summary %>%
+  filter(bID == 0) %>%
+  left_join(t_summary_structures, by = "contig") %>%
+  mutate(summary_struct_assignment = case_when(
+    (bID.x == 0 & bOrientation.x == 1) ~ "H2K2N2",
+    TRUE ~ NA_character_
+  ))
+
+# Step 2: Assign for bID == 3
+t_summary_structures_3 <- t_filtered_summary %>%
+  filter(bID == 3) %>%
+  left_join(t_summary_structures, by = "contig") %>%
+  group_by(contig) %>%
+  mutate(summary_struct_assignment = case_when(
+    (n_bID.x == 2 & number_NSF != "2") ~ "H1K2N1",
+    (n_bID.x == 1 & number_NSF == "1") ~ "H1K1N1",
+    (n_bID.x == 1 & number_NSF == "2") ~ "H1K1N2",
+    (n_bID.x == 1 & number_NSF == "3") ~ "H1K1N3",
+    (n_bID.x == 1 & number_NSF == "4") ~ "H1K1N4",
+    TRUE ~ NA_character_
+  )) %>%
+  slice(1)  # Keep only the first row per contig
+
+# Step 3: Combine both datasets
+t_summary_structures_FINAL <- bind_rows(t_summary_structures_0, t_summary_structures_3)
+
+# Compute segment size and per-bID counts
+t_filtered <- t %>%
+  mutate(size = bend - bstart) %>%
+  group_by(bID) %>%
+  mutate(count = n()) %>%
+  ungroup()
+
+# Define thresholds using IQR method
+size_threshold_low <- quantile(t_filtered$size, 0.25, na.rm = TRUE)
+count_threshold_low <- quantile(t_filtered$count, 0.25, na.rm = TRUE)
+
+# Filter data based on thresholds
+t <- t_filtered %>%
+  filter(size >= size_threshold_low | count > count_threshold_low) %>%
+  group_by(contig) %>%
+  mutate(
+    seg_len = bend - bstart,
+    rel_end = cumsum(seg_len),
+    rel_start = lag(rel_end, default = 0)
+  ) %>%
+  separate(contig, c("sample_id", "sample_hap", "sample_contig"), sep = "#|\\.", remove = FALSE) %>%
+  dplyr::select(-c(sample_hap, sample_contig))
+
+# Generate haplotype structure summaries
+hap_sums <- t %>%
+  mutate(bID_d = paste(bID, ".", bOrientation, sep = "")) %>%
+  group_by(contig) %>%
+  summarize(
+    hap_struc = paste0(bID, collapse = "-"),
+    hap_struc_d = paste0(bID_d, collapse = "-"),
+    .groups = "drop"
+  )
+
+# Merge haplotype structure summaries into main dataset
+t <- inner_join(t, hap_sums, by = "contig")
+
+# Identify haplotype block start positions
+hap_info <- t %>%
+  group_by(contig, sample_id, hap_struc, hap_struc_d) %>%
+  summarize(hap_block_start = min(bstart), .groups = "drop")
+
+# Merge haplotype block start positions
+t <- inner_join(t, hap_info, by = c("contig", "hap_struc", "sample_id", "hap_struc_d")) %>%
+  mutate(
+    rel_start2 = bstart - hap_block_start,
+    rel_end2 = bend - hap_block_start
+  )
+
+# Summarize unique haplotype structures
+unique_structures <- hap_sums %>%
+  group_by(hap_struc_d) %>%
+  summarise(n = n(), .groups = 'drop')
+
+# Filter representative haplotypes
+t_unique <- t %>%
+  distinct(contig, rel_start2, rel_end2, bID, bOrientation, hap_struc_d, sample_id, .keep_all = TRUE) %>%
+  group_by(hap_struc_d) %>%
+  filter(row_number() == 1 | sample_id == first(sample_id) | sample_id == "chr19_pat_hsa17:32381006-18094864") %>%
+  ungroup() %>%
+  left_join(unique_structures, by = "hap_struc_d") %>%
+  arrange(desc(n)) %>%
+  # filter(!sample_id %in% c("chr19_hap1_hsa17:22562619-21095628", "chr19_pat_hsa17:32381006-18094864",
+  #                          "chm13", "chr19_hap2_hsa17:20706827-19239702", "NA210934", "HG00320", "HG00514")) %>%
+  mutate(y_label = paste0("(", n, ")", contig)) %>%
+  mutate(haplotype = str_extract(contig, "(?<=#)[^#]+$"))
+
+# Generate visualization using gggenes
+g <- ggplot(t_unique, aes(y = contig)) +
+  geom_gene_arrow(
+    mapping = aes(
+      xmin = rel_start2,
+      xmax = rel_end2,
+      fill = bID,
+      forward = !bOrientation
+    ),
+    arrowhead_height = unit(4.8, "mm"), 
+    arrowhead_width = unit(4.8, "mm"),
+    arrow_body_height = unit(3.2, "mm"),
+    size = 0.1
+  ) +
+  theme_bw() +
+  labs(y = "") +
+  scale_fill_manual(values = color_dict)
+
+# Display plot
+print(g)
+```
+
+```{r}
+library(knitr)
+library(kableExtra)
+library(janitor)
+library(webshot2)
+
+all_populations_final_freq <- read.csv("~/Documents/datasets/all_populations_final_freq.csv")
+
+all_populations_final_freq <- all_populations_final_freq %>%
+  mutate(across(where(is.character), ~ gsub("_", " ", .)))
+
+kable(all_populations_final_freq, caption = "Haplotype frequencies per population")
+
+# Create the HTML table
+table_html <- kable(all_populations_final_freq, format = "html", caption = "Haplotype frequencies per population") %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+
+# Save HTML file temporarily
+html_file <- "temp_table.html"
+save_kable(table_html, file = html_file)
+
+# Convert HTML to PDF
+webshot2::webshot(html_file, file = "~/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/SupplementalFigure4A_v1.pdf", zoom = 1)
+
+```
+
+```{r}
+library(writexl) 
+
+supplementary_table_1_FINAL <- read.csv("~/Documents/datasets/metadata/supplementary_table_1_FINAL.csv")
+
+supplementary_table_1_FINAL <- supplementary_table_1_FINAL %>%
+  separate(complex_genotype, into = c("hap1", "hap2"), sep = "/") %>%
+    pivot_longer(cols = c(hap1, hap2),
+               names_to = "hap_label",
+               values_to = "hap")
+
+hap_freq_table <- supplementary_table_1_FINAL %>%
+  group_by(pop, hap) %>%
+  summarise(hap_count = n(), .groups = "drop") %>%
+  group_by(pop) %>%
+  mutate(N = sum(hap_count),
+         frequency = hap_count / N) %>%
+  ungroup() %>%
+  select(pop, hap, frequency, N) %>%
+  pivot_wider(names_from = hap, values_from = frequency, values_fill = 0) %>%
+  relocate(N, .after = pop) %>%
+  relocate(any_of(c("H1", "H1D", "H1DD", "H2", "H2D")), .after = N) %>%
+  mutate(N = N/2) %>%
+  mutate(across(where(is.character), ~ gsub("_", " ", .)))
+
+kable(hap_freq_table, caption = "Haplotype frequencies per population (includes H1.B3)")
+
+# Create the HTML table
+table_html <- kable(hap_freq_table, format = "html", caption = "Haplotype frequencies per population (includes H1.B3)") %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+
+# Save HTML file temporarily
+html_file <- "temp_table.html"
+save_kable(table_html, file = html_file)
+
+# Convert HTML to PDF
+webshot2::webshot(html_file, file = "~/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/SupplementalFigure4A_v2.pdf", zoom = 1)
+
+write_xlsx(hap_freq_table, path = "~/Documents/hap_freq_table.xlsx")
+
+```
+
+```{r}
+merged_superset <- full_join(all_populations_final_freq, hap_freq_table, by = "pop")
+
+write_xlsx(merged_superset, path = "~/Documents/hap_freq_table.xlsx")
+```
+
