@@ -1,0 +1,932 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r loading libraries}
+library(tidyverse)
+library(MASS)
+library(SNPRelate)
+library(tibble)
+library(PNWColors)
+library(ggnewscale)
+library(gridExtra)
+```
+
+```{r}
+primates_files_hg18 <- list.files("~/Documents/datasets/SNPRelate/primates/hg18", pattern = "*.vcf", full.names = TRUE, recursive = TRUE)
+
+for (i in 1:length(primates_files_hg18)) {
+  vcf.fn <- primates_files_hg18[i]
+  print(vcf.fn)
+  only_file_name <- strsplit(vcf.fn, "/")[[1]][9]
+  print(only_file_name)
+  dataset <- strsplit(only_file_name, "_")[[1]][1]
+  print(dataset)
+  window_start <- strsplit(only_file_name, "_")[[1]][3]
+  print(window_start)
+  
+  snpgdsVCF2GDS(vcf.fn, paste(dataset, "_", window_start, ".gds", sep=""))
+  
+  genofile <- snpgdsOpen(paste(dataset, "_", window_start, ".gds", sep=""))
+
+  print("genofile created")
+  
+  pca_window <- snpgdsPCA(genofile)
+  
+  print("pca windows created")
+  
+  #sample_ids <- pca_window$sample.id
+  
+  ordered_1KG_SNPRelate <- ordered_1KG_SNPRelate %>% 
+    add_column(assign(paste("slidingwindow_", dataset, ".", window_start, ".gds", sep=""), as.double(pca_window$eigenvect[,1])))
+  
+  print("mds values outputted and appended")
+  
+  #append(col_names,paste("window", i, sep = ""))
+}
+
+write.csv(ordered_1KG_SNPRelate, "~/Documents/datasets/SNPRelate/HGDP+1000G/1KG/ordered_primates_SNPRelate.csv", row.names = FALSE)
+
+```
+
+```{r generating 1000G SNPRelate values}
+vcf_files_1KG <- list.files("~/Documents/datasets/SNPRelate/HGDP+1000G/1KG", pattern = "*.vcf", full.names = TRUE, recursive = TRUE)
+
+ordered_1KG_SNPRelate = read.table('~/Documents/datasets/SNPRelate/HGDP+1000G/1KG/1000G_samples_ordered.txt',sep='\n', col.names = c("sample"))
+
+for (i in 1:length(vcf_files_1KG)) {
+  vcf.fn <- vcf_files_1KG[i]
+  only_file_name <- strsplit(vcf.fn, "/")[[1]][9]
+  dataset <- strsplit(only_file_name, "_")[[1]][1]
+  window_start <- strsplit(only_file_name, "_")[[1]][3]
+  
+  snpgdsVCF2GDS(vcf.fn, paste(dataset, ".", window_start, ".gds", sep=""),  method="biallelic.only")
+  
+  genofile <- snpgdsOpen(paste(dataset, ".", window_start, ".gds", sep=""))
+
+  print("genofile created")
+  
+  pca_window <- snpgdsPCA(genofile, autosome.only = FALSE)
+  
+  print("pca windows created")
+  
+  #sample_ids <- pca_window$sample.id
+  
+  ordered_1KG_SNPRelate <- ordered_1KG_SNPRelate %>% 
+    add_column(assign(paste("slidingwindow_", dataset, ".", window_start, ".gds", sep=""), as.double(pca_window$eigenvect[,1])))
+  
+  print("mds values outputted and appended")
+  
+  #append(col_names,paste("window", i, sep = ""))
+}
+
+#commenting this out because I manually edit the names and numbers on the files to reflect the column headers
+write.csv(ordered_1KG_SNPRelate, "~/Documents/datasets/SNPRelate/HGDP+1000G/1KG/ordered_1KG_SNPRelate.csv", row.names = FALSE)
+```
+
+```{r generating HGDP SNPRelate values}
+vcf_files_HGDP <- list.files("~/Documents/datasets/SNPRelate/HGDP+1000G/HGDP", pattern = "*.vcf", full.names = TRUE, recursive = TRUE)
+
+ordered_HGDP_SNPRelate = read.table('~/Documents/datasets/SNPRelate/HGDP+1000G/HGDP/HGDP_samples_ordered.txt',sep='\n', col.names = c("sample"))
+
+for (i in 1:length(vcf_files_HGDP)) {
+  vcf.fn <- vcf_files_HGDP[i]
+  only_file_name <- strsplit(vcf.fn, "/")[[1]][9]
+  dataset <- strsplit(only_file_name, "_")[[1]][1]
+  window_start <- strsplit(only_file_name, "_")[[1]][3]
+  
+  snpgdsVCF2GDS(vcf.fn, paste(dataset, "_", window_start, ".gds", sep=""),  method="biallelic.only")
+  
+  genofile <- snpgdsOpen(paste(dataset, "_", window_start, ".gds", sep=""))
+
+  print("genofile created")
+  
+  pca_window <- snpgdsPCA(genofile, autosome.only = FALSE)
+  
+  print("pca windows created")
+  
+  #sample_ids <- pca_window$sample.id
+  
+  ordered_HGDP_SNPRelate <- ordered_HGDP_SNPRelate %>% 
+    add_column(assign(paste("slidingwindow_", dataset, "_", window_start, ".gds", sep=""), as.double(pca_window$eigenvect[,1])))
+  
+  print("mds values outputted and appended")
+  
+  #append(col_names,paste("window", i, sep = ""))
+}
+
+#commenting this out because I manually edit the names and numbers on the files to reflect the column headers
+#write.csv(ordered_HGDP_SNPRelate, "~/Documents/datasets/SNPRelate/HGDP+1000G/HGDP/ordered_HGDP_SNPRelate.csv", row.names = FALSE)
+```
+
+```{r final touches on the dataframe}
+ordered_1KG_SNPRelate <- read.csv("~/Documents/datasets/SNPRelate/new_1000G_files/1000G/ordered_new_1KG_SNPRelate.csv", check.names = FALSE)
+
+#ordered_HGDP_SNPRelate <- read.csv("~/Documents/datasets/SNPRelate/HGDP+1000G/HGDP/ordered_HGDP_SNPRelate.csv", check.names = FALSE)
+#ordered_1KG_HGDP_SNPRelate <- rbind(ordered_1KG_SNPRelate, ordered_HGDP_SNPRelate)
+
+#merge this data with combined_summary_table from cnv_plotmaker.Rmd
+combined_summary_table
+
+# final_SNPRelate_df <- merge(combined_summary_table, ordered_1KG_HGDP_SNPRelate, by = "sample")
+# SNPRelate_transformed <- final_SNPRelate_df %>% drop_na() %>% pivot_longer(-c("sample", "dataset", "genotype", "complex_genotype", "hap1", "hap2", "pop", "superpop", "latitude", "longitude"), names_to = "xpos_hg38", values_to = "PC1") %>%
+#   mutate(superpop = replace(superpop, superpop == "Central South Asia (HGDP)", "CSA")) %>%
+#   mutate(superpop = replace(superpop, superpop == "Africa (HGDP)", "AFR")) %>%
+#   mutate(superpop = replace(superpop, superpop == "America (HGDP)", "AMR")) %>%
+#   mutate(superpop = replace(superpop, superpop == "Oceania (SGDP),Oceania (HGDP)", "OCN")) %>%
+#   mutate(superpop = replace(superpop, superpop == "Europe (HGDP)", "EUR")) %>%
+#   mutate(superpop = replace(superpop, superpop == "East Asia (HGDP)", "EAS")) %>%
+#   mutate(superpop = replace(superpop, superpop == "Oceania (HGDP)", "OCN")) %>%
+#   mutate(superpop = replace(superpop, superpop == "Middle East (HGDP)", "SAS")) %>%
+#   mutate(superpop = replace(superpop, superpop == "EUR,AFR", "EUR")) 
+
+#rerunning without the HGDP samples
+final_SNPRelate_df <- merge(combined_summary_table, ordered_1KG_SNPRelate, by = "sample")
+
+SNPRelate_transformed <- final_SNPRelate_df %>% drop_na() %>% pivot_longer(-c("sample", "dataset", "genotype", "complex_genotype", "hap1", "hap2", "pop", "superpop"), names_to = "xpos_hg38", values_to = "PC1") %>%
+  mutate(superpop = replace(superpop, superpop == "Central South Asia (HGDP)", "CSA")) %>%
+  mutate(superpop = replace(superpop, superpop == "Africa (HGDP)", "AFR")) %>%
+  mutate(superpop = replace(superpop, superpop == "America (HGDP)", "AMR")) %>%
+  mutate(superpop = replace(superpop, superpop == "Oceania (SGDP),Oceania (HGDP)", "OCN")) %>%
+  mutate(superpop = replace(superpop, superpop == "Europe (HGDP)", "EUR")) %>%
+  mutate(superpop = replace(superpop, superpop == "East Asia (HGDP)", "EAS")) %>%
+  mutate(superpop = replace(superpop, superpop == "Oceania (HGDP)", "OCN")) %>%
+  mutate(superpop = replace(superpop, superpop == "Middle East (HGDP)", "SAS")) %>%
+  mutate(superpop = replace(superpop, superpop == "EUR,AFR", "EUR")) 
+```
+
+```{r}
+ordered_1KG_HGDP_SNPRelate <- read.csv("~/Documents/datasets/SNPRelate/HGDP+1000G/sliding-windows_1000G_HGDP.csv", check.names = FALSE)
+final_SNPRelate_df <- merge(combined_summary_table, ordered_1KG_HGDP_SNPRelate, by = "sample")
+SNPRelate_transformed <- final_SNPRelate_df %>% drop_na() %>% pivot_longer(-c("sample", "dataset", "genotype", "complex_genotype", "hap1", "hap2", "pop", "superpop", "latitude", "longitude"), names_to = "xpos_hg38", values_to = "PC1") %>%
+  mutate(superpop = replace(superpop, superpop == "Central South Asia (HGDP)", "CSA")) %>%
+  mutate(superpop = replace(superpop, superpop == "Africa (HGDP)", "AFR")) %>%
+  mutate(superpop = replace(superpop, superpop == "America (HGDP)", "AMR")) %>%
+  mutate(superpop = replace(superpop, superpop == "Oceania (SGDP),Oceania (HGDP)", "OCN")) %>%
+  mutate(superpop = replace(superpop, superpop == "Europe (HGDP)", "EUR")) %>%
+  mutate(superpop = replace(superpop, superpop == "East Asia (HGDP)", "EAS")) %>%
+  mutate(superpop = replace(superpop, superpop == "Oceania (HGDP)", "OCN")) %>%
+  mutate(superpop = replace(superpop, superpop == "Middle East (HGDP)", "SAS")) %>%
+  mutate(superpop = replace(superpop, superpop == "EUR,AFR", "EUR")) %>%
+  filter(xpos_hg38 %in% 45200000:47300000) #this is the range of Peter's 17q21.31 plotting code
+```
+
+```{r SNPRelate plot all individuals and populations}
+bay_pal <- pnw_palette("Bay", 8, type = "continuous")
+
+rect <- data.frame(xmin = 43500000, xmax = 44500000, ymin = -Inf, ymax = Inf)
+
+ggplot() +
+  scale_color_manual(values = bay_pal[c(1,4,5,7)]) +
+  geom_line(aes(x=as.numeric(xpos_hg38), y = PC1, group = sample, color = genotype), data = SNPRelate_transformed) +
+  geom_segment((aes(x = 45268142, xend = 46866377, y = -1.35, yend = -1.35)), size = 2, color = 'lightgrey') +
+  new_scale_color() +
+  geom_segment(aes(x = start, xend = end, y = -0.4, yend = -0.4, color = fracMatch),
+               data = (read_sds %>% arrange(fracMatch)),
+               size = 1.2,
+               alpha = 1,
+               arrow = arrow(length = unit(0.005, "cm"), type = "closed"),
+               linejoin = "mitre",
+               lineend = "butt") +
+  ##plot the lines above the segdups with the genes
+  geom_segment(aes(x='V2', xend='V3', y=-0.45, yend=-0.45),
+               data=(df %>% filter('V10' == 2)),size=.5,
+               arrow = arrow(length = unit(0.01, "cm"), type="closed"),
+               linejoin="mitre",
+               lineend="butt") +
+  geom_text(inherit.aes = FALSE, aes(x='V2', y=-1.250, hjust= ifelse('V6' == "+", 0, 1), label=name),
+            data=(df %>% filter('V10' == 2)),
+            size=2,
+            angle=0,
+            vjust=0,
+            fontface = 'italic') +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  theme_bw() +
+  coord_cartesian(xlim = c(43450000, 44370000), ylim = c(-0.5, 0.8))
+```
+
+```{r factor individuals in superpops or complex genotypes}
+# Convert complex_genotype to a factor
+SNPRelate_transformed$genotype <- factor(SNPRelate_transformed$genotype)
+
+# Create the base ggplot object with data and common aesthetics
+base_plot <- ggplot(data = SNPRelate_transformed, aes(x = as.numeric(xpos_hg38), y = PC1))
+
+# Combine all layers into a single plot and add facet_wrap
+final_plot <- base_plot +
+  geom_line(aes(group = sample, color = genotype)) +
+  scale_color_manual(values = bay_pal[c(1, 4, 5, 7)]) +
+  geom_segment(aes(x = 45268142, xend = 46866377, y = -1.35, yend = -1.35), size = 2, color = 'lightgrey') +
+  new_scale_color() +
+  geom_segment(aes(x = start, xend = end, y = -1.2, yend = -1.2, color = fracMatch), 
+               data = plot_sds %>% arrange(fracMatch), 
+               size = 1.2, 
+               alpha = 1, 
+               arrow = arrow(length = unit(0.005, "cm"), type = "closed"), 
+               linejoin = "mitre", 
+               lineend = "butt") +
+  geom_segment(aes(x = start, xend = end, y = -1.275, yend = -1.275),
+               data = plot_genes %>% filter(xpos == 2), 
+               size = 0.5,
+               arrow = arrow(length = unit(0.01, "cm"), type = "closed"),
+               linejoin = "mitre",
+               lineend = "butt") +
+  geom_text(inherit.aes = FALSE, aes(x = start, y = -1.25, hjust = ifelse(strand == "+", 0, 1), label = name),
+            data = plot_genes %>% filter(xpos == 2) %>% filter(do_label),
+            size = 2,
+            angle = 0,
+            vjust = 0,
+            fontface = 'italic') +
+  xlab("genome position (hg38)") +
+  theme_bw() 
+#+
+  #facet_wrap(~complex_genotype, scales = "free_x", ncol = 3)
+
+# View the final plot
+pdf("~/Documents/figures/SNPRelate plots/SNPRelate_faceted_COMPLEX-GENO.pdf", width = 11, height = 8.5)
+print(final_plot)
+```
+
+```{r determining recombinant individuals}
+# SNPRelate_transformed %>%
+#   group_by(genotype) %>%
+#   filter(xpos_hg38 %in% (4570000:45790000)) %>%
+#   dplyr::summarise(Mean = mean(PC1, na.rm = TRUE))
+
+# Shared x-axis range
+x_min <- 45268142
+#x_min <- 45320000
+x_max <- 46921463
+#x_max <- 46970000
+x_range <- c(x_min, x_max)
+
+# SNPRelate_transformed %>%
+#   filter(xpos_hg38 %in% (45820000:46120000)) %>%
+#   group_by(genotype, xpos_hg38) %>%
+#   dplyr::summarise(Mean = mean(PC1, na.rm = TRUE))
+
+SNPRelate_transformed %>%
+  filter(xpos_hg38 %in% (45268142:46921463)) %>%
+  group_by(genotype, xpos_hg38) %>%
+  dplyr::summarise(Mean = mean(PC1, na.rm = TRUE))
+
+crossover_H1H1_H1H2 = filter(SNPRelate_transformed, (xpos_hg38 %in% (45268142:46921463) | xpos_hg38 %in% (45268142:46921463)) & genotype == "H1H1")
+
+crossover_H1H1_H1H2_df <- subset(SNPRelate_transformed, sample %in% crossover_H1H1_H1H2$sample)
+
+bay_pal <- pnw_palette("Bay", 8, type = "continuous")
+
+#rect <- data.frame(xmin = 43345509, xmax = 44943743, ymin = -Inf, ymax = Inf)
+
+# View the final plot
+pdf("~/Documents/figures/SNPRelate plots/SNPRelate_DCO_H1H1_H1H2.pdf", width = 11, height = 8.5)
+
+ggplot() +
+  scale_color_manual(values = bay_pal[c(1,4,5,7)]) +
+  geom_line(aes(x=as.numeric(xpos_hg38), y = PC1, group = sample, color = genotype), data = crossover_H1H1_H1H2_df) +
+  geom_segment((aes(x = 45268142, xend = 46866377, y = -1.35, yend = -1.35)), size = 2, color = 'lightgrey') +
+  new_scale_color() +
+  geom_segment(aes(x = start, xend = end, y = -1.2, yend = -1.2, color = fracMatch),
+               data = (plot_sds %>% arrange(fracMatch)),
+               size = 1.2,
+               alpha = 1,
+               arrow = arrow(length = unit(0.005, "cm"), type = "closed"),
+               linejoin = "mitre",
+               lineend = "butt") +
+  ##plot the lines above the segdups with the genes
+  geom_segment(aes(x=start, xend=end, y=-1.275, yend=-1.275),
+               data=(plot_genes %>% filter(xpos == 2)),size=.5,
+               arrow = arrow(length = unit(0.01, "cm"), type="closed"),
+               linejoin="mitre",
+               lineend="butt") +
+  geom_text(inherit.aes = FALSE, aes(x=start, y=-1.250, hjust=ifelse(strand=="+",0,1),label=name),
+            data=(plot_genes %>% filter(xpos ==2) %>% filter(do_label)),
+            size=2,
+            angle=0,
+            vjust=0,
+            fontface = 'italic') +
+  geom_vline(xintercept = 45820000) +
+  geom_vline(xintercept = 46120000) +
+  geom_vline(xintercept = 45700000) +
+  geom_vline(xintercept = 45790000) +
+  geom_hline(yintercept = 0.0305) +
+  xlab("genome position (hg38)") +
+  theme_bw()
+
+dev.off()
+```
+
+```{r}
+library(gridExtra)
+pdf("/Users/samvardhinisridharan/Documents/figures/SNPRelate plots/DCO_df.pdf", height=11, width=10)
+grid.table(subset(crossover_H1H1_H1H2, select = c("sample", "dataset", "genotype", "complex_genotype", "pop", "superpop", "xpos_hg38", "PC1")))
+dev.off()
+```
+
+```{r troubleshooting issues with the PCA and discrepancies with plink}
+#sample_file <- "~/Documents/datasets/SNPRelate/HGDP+1000G/1KG/1000G_chr17_45700000_45710000.vcf"
+#sample_file2 <- "~/Documents/datasets/SNPRelate/HGDP+1000G/1KG/1000G_chr17_45710000_45720000.vcf"
+#sample_file3 <- "~/Documents/datasets/SNPRelate/HGDP+1000G/1KG/1000G_chr17_45770000_45780000.vcf"
+#sample_file4 <- "~/Documents/datasets/SNPRelate/HGDP+1000G/1KG/1000G_chr17_46000000_46010000.vcf"
+
+#sample_file5 <- "~/Documents/datasets/SNPRelate/HGDP+1000G/1KG/1000G_chr17_46100000_46110000.vcf"
+
+#sample_file8 <- "~/Documents/datasets/SNPRelate/HGDP+1000G/1KG/1000G_chr17_46070000_46080000.vcf"
+
+#sample_file9 <- "~/Documents/datasets/SNPRelate/new_1000G_files/1000G/1000G_chr17_46080000_46090000.vcf"
+
+sample_file11 <- "~/Documents/datasets/SNPRelate/new_1000G_files/1000G/1000G_chr17_46010000_46020000.vcf"
+
+sample_file13 <- "~/Documents/datasets/SNPRelate/new_1000G_files/1000G/1000G_chr17_44000000_44010000.vcf"
+
+sample_file14 <- "~/Documents/datasets/SNPRelate/new_1000G_files/1000G/1000G_chr17_44010000_44020000.vcf"
+
+sample_file15 <- "~/Documents/datasets/SNPRelate/new_1000G_files/1000G/1000G_chr17_44020000_44030000.vcf"
+
+#debug <- "~/Documents/datasets/SNPRelate/HGDP+1000G/1KG/1000G_chr17_45790000_45800000.vcf"
+
+
+snpgdsVCF2GDS(sample_file15, "sample_file15.gds", method="biallelic.only")
+
+genofile <- snpgdsOpen("sample_file15.gds")
+
+pca <- snpgdsPCA(genofile, autosome.only = FALSE)
+
+pc.percent <- pca$varprop*100
+head(round(pc.percent, 2))
+
+# make a data.frame
+tab <- data.frame(sample.id = pca$sample.id,
+    EV1 = pca$eigenvect[,1],    # the first eigenvector
+    EV2 = pca$eigenvect[,2],    # the second eigenvector
+    stringsAsFactors = FALSE)
+
+metadata <- read_delim("~/Documents/datasets/hgdp_sgdp_1kg_summary.txt", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
+
+tab_with_metadata <- merge(tab, metadata, by.x= 'sample.id', by.y = 'sample')
+
+#write.csv(tab_with_metadata, "~/Documents/datasets/SNPRelate/DEBUGGING_1000G_chr17_46010000_46020000.csv", row.names = FALSE )
+
+
+# ggplot(tab_with_metadata %>% filter(genotype == 'H1H1'), aes(x=0, y = EV1, color=genotype)) + 
+#   geom_point() 
+# 
+# ggplot(tab_with_metadata %>% filter(genotype == 'H1H2'), aes(x=0, y = EV1, color=genotype)) + 
+#   geom_point() 
+# 
+# ggplot(tab_with_metadata %>% filter(genotype == 'H2H2'), aes(x=0, y = EV1, color=genotype)) + 
+#   geom_point() 
+
+ggplot(tab_with_metadata, aes(x=EV2, y = EV1, color = genotype)) + 
+  geom_point()
+  #facet_grid(~genotype)
+```
+
+```{r}
+ggplot(SNPRelate_transformed %>% filter(xpos_hg38 == 46010001), aes(x=as.numeric(xpos_hg38), y = PC1, color=genotype)) + 
+  geom_point(size = 0.05) +
+  facet_grid(~genotype)
+
+ggplot(SNPRelate_transformed %>% filter(xpos_hg38 == c(46010001,46000001, 46000001-10000, 46000001-20000, 46000001-30000,  46000001-40000)), aes(x=as.numeric(xpos_hg38), y = PC1, color=genotype)) + 
+  geom_point(size = 0.05) +
+  facet_grid(~genotype)
+
+#df_part_1 <- "~/Documents/datasets/SNPRelate/DEBUGGING_1000G_chr17_46010000_46020000.csv"
+#df_part_2 <- "~/Documents/datasets/SNPRelate/DEBUGGING_part2.xlsx"
+
+df_part_1 <- read_csv("~/Documents/datasets/SNPRelate/DEBUGGING_1000G_chr17_46010000_46020000.csv")
+df_part_2 <- read_csv("~/Documents/datasets/SNPRelate/DEBUGGING_part2.csv")
+
+merged_comparison = merge(SNPRelate_transformed, tab_with_metadata, by.x='sample', by.y='sample.id', all = TRUE)
+
+
+vcf_files_1KG_RERUN <- list.files("~/Documents/datasets/SNPRelate/HGDP+1000G/1KG", pattern = "*.vcf", full.names = TRUE, recursive = TRUE)
+
+ordered_1KG_SNPRelate_RERUN = read.table('~/Documents/datasets/SNPRelate/HGDP+1000G/1KG/1000G_samples_ordered.txt',sep='\n', col.names = c("sample"))
+
+for (i in 1:length(vcf_files_1KG_RERUN[33:41])) {
+  vcf.fn <- vcf_files_1KG_RERUN[33:41][i]
+  print(vcf.fn)
+  only_file_name <- strsplit(vcf.fn, "/")[[1]][9]
+  print(only_file_name)
+  dataset <- strsplit(only_file_name, "_")[[1]][1]
+  print(dataset)
+  window_start <- strsplit(only_file_name, "_")[[1]][3]
+  print(window_start)
+  
+  snpgdsVCF2GDS(vcf.fn, paste(dataset, "_", window_start, ".gds", sep=""),  method="biallelic.only")
+  
+  genofile <- snpgdsOpen(paste(dataset, "_", window_start, ".gds", sep=""))
+
+  print("genofile created")
+  
+  pca_window <- snpgdsPCA(genofile, autosome.only = FALSE)
+  
+  print("pca windows created")
+  
+  #sample_ids <- pca_window$sample.id
+  
+  ordered_1KG_SNPRelate_RERUN <- ordered_1KG_SNPRelate_RERUN %>% 
+    add_column(assign(paste("slidingwindow_", dataset, "_", window_start, ".gds", sep=""), as.double(pca_window$eigenvect[,1])))
+  
+  print("mds values outputted and appended")
+  
+  View(ordered_1KG_SNPRelate_RERUN)
+  
+  #append(col_names,paste("window", i, sep = ""))
+}
+
+#commenting this out because I manually edit the names and numbers on the files to reflect the column headers
+#write.csv(ordered_1KG_SNPRelate, "~/Documents/datasets/SNPRelate/HGDP+1000G/1KG/ordered_1KG_SNPRelate.csv", row.names = FALSE)
+```
+
+```{r EXPLORATORY making trees using SNPRelate}
+# ibs <- snpgdsIBS(genofile, num.thread=2)
+# 
+# loc <- cmdscale(1 - ibs$ibs, k = 2)
+# x <- loc[, 1]; y <- loc[, 2]
+# #race <- as.factor(pop_code)
+# 
+# plot(x, y, xlab = "", ylab = "",
+#     main = "Multidimensional Scaling Analysis (IBS)")
+# legend("topleft", legend=levels(race), pch="o")
+# 
+set.seed(100)
+ibs.hc <- snpgdsHCluster(snpgdsIBS(genofile, num.thread=2))
+rv <- snpgdsCutTree(ibs.hc)
+plot(rv$dendrogram, leaflab="none", main="HapMap Phase II")
+
+sample_file6 <- "~/Documents/datasets/linkage/split_vcfs/triangle_plots_split/triangle_plot_vcfs/window_45798000_45808000/EAS.H1_45798000_45808000.vcf"
+
+snpgdsVCF2GDS(sample_file6, "test6.gds", method="biallelic.only")
+
+genofile <- snpgdsOpen("")
+
+pca <- snpgdsPCA(genofile, autosome.only = FALSE)
+pc.percent <- pca$varprop*100
+head(round(pc.percent, 2))
+```
+
+```{r rerunning the values on SNPRelate files when redownloaded}
+vcf_files_1KG_NEW <- list.files("~/Documents/datasets/SNPRelate/new_1000G_files/1000G", pattern = "*.vcf", full.names = TRUE, recursive = TRUE)
+
+ordered_1KG_SNPRelate = read.table('~/Documents/datasets/SNPRelate/HGDP+1000G/1KG/1000G_samples_ordered.txt',sep='\n', col.names = c("sample"))
+
+for (i in 1:length(vcf_files_1KG_NEW)) {
+  vcf.fn <- vcf_files_1KG_NEW[i]
+  file_path_parts <- strsplit(vcf.fn, "/")[[1]]
+  only_file_name <- tail(file_path_parts, n=1) # Assuming the file name is the last part of the path
+  dataset_window_start <- strsplit(only_file_name, "_")[[1]]
+  dataset <- dataset_window_start[1]
+  window_start <- dataset_window_start[3]
+  print(window_start)
+
+  snpgdsVCF2GDS(vcf.fn, paste(dataset, ".", window_start, ".gds", sep=""),  method="biallelic.only")
+  genofile <- snpgdsOpen(paste(dataset, ".", window_start, ".gds", sep=""))
+  print("genofile created")
+  pca_window <- snpgdsPCA(genofile, autosome.only = FALSE)
+  print("pca windows created")
+  sample_ids <- pca_window$sample.id
+  ordered_1KG_SNPRelate <- ordered_1KG_SNPRelate %>% 
+    add_column(assign(paste("slidingwindow_", dataset, ".", window_start, ".gds", sep=""), as.double(pca_window$eigenvect[,1])))
+  print("mds values outputted and appended")
+  
+  #append(col.names,paste("window", i, sep = ""))
+}
+
+#commenting this out because I manually edit the names and numbers on the files to reflect the column headers
+write.csv(ordered_1KG_SNPRelate, "~/Documents/datasets/SNPRelate/new_1000G_files/1000G/ordered_new_1KG_SNPRelate.csv", row.names = FALSE)
+```
+
+```{r rerunning the values on SNPRelate files when redownloaded from merged}
+vcf_files_1KG_NEW <- list.files("~/Documents/datasets/SNPRelate/new_HGDP+1000G_files/merged_1000G+HGDP", pattern = "*.vcf", full.names = TRUE, recursive = TRUE)
+
+ordered_1KG_SNPRelate = read.table('~/Documents/datasets/SNPRelate/new_HGDP+1000G_files/merged_1000G+HGDP/samples_ordered.txt',sep='\n', col.names = c("sample"))
+
+for (i in 1:length(vcf_files_1KG_NEW)) {
+  vcf.fn <- vcf_files_1KG_NEW[i]
+  #print(vcf.fn)
+  file_path_parts <- strsplit(vcf.fn, "/")[[1]]
+  #print(file_path_parts)
+  only_file_name <- tail(file_path_parts, n=1) # Assuming the file name is the last part of the path
+  dataset_window_start <- strsplit(only_file_name, "_")[[1]]
+  dataset <- dataset_window_start[2]
+  print(dataset)
+  window_start <- dataset_window_start[4]
+  print(window_start)
+
+  snpgdsVCF2GDS(vcf.fn, paste(dataset, "_", window_start, ".gds", sep=""),  method="biallelic.only")
+  genofile <- snpgdsOpen(paste(dataset, "_", window_start, ".gds", sep=""))
+  print("genofile created")
+  pca_window <- snpgdsPCA(genofile, autosome.only = FALSE)
+  print("pca windows created")
+  sample_ids <- pca_window$sample.id
+  ordered_1KG_SNPRelate <- ordered_1KG_SNPRelate %>% 
+    add_column(assign(paste("slidingwindow_", dataset, ".", window_start, ".gds", sep=""), as.double(pca_window$eigenvect[,1])))
+  View(ordered_1KG_SNPRelate)
+  print("mds values outputted and appended")
+  
+  #append(col.names,paste("window", i, sep = ""))
+}
+
+#commenting this out because I manually edit the names and numbers on the files to reflect the column headers
+write.csv(ordered_1KG_SNPRelate, "~/Documents/datasets/SNPRelate/new_HGDP+1000G_files/merged_1000G+HGDP/ordered_new_HGDP+1KG_SNPRelate.csv", row.names = FALSE)
+```
+
+```{r}
+ordered_new_1KG_SNPRelate <- read_csv("~/Documents/datasets/SNPRelate/new_1000G_files/1000G/ordered_new_1KG_SNPRelate.csv")
+
+final_SNPRelate_df <- merge(ordered_new_1KG_SNPRelate, metadata, by = 'sample')
+
+SNPRelate_transformed <- final_SNPRelate_df %>% drop_na() %>% pivot_longer(-c("sample", "dataset", "genotype", "complex_genotype", "hap1", "hap2", "pop", "superpop"), names_to = "xpos_hg38", values_to = "PC1") %>%
+  mutate(superpop = replace(superpop, superpop == "Central South Asia (HGDP)", "CSA")) %>%
+  mutate(superpop = replace(superpop, superpop == "Africa (HGDP)", "AFR")) %>%
+  mutate(superpop = replace(superpop, superpop == "America (HGDP)", "AMR")) %>%
+  mutate(superpop = replace(superpop, superpop == "Oceania (SGDP),Oceania (HGDP)", "OCN")) %>%
+  mutate(superpop = replace(superpop, superpop == "Europe (HGDP)", "EUR")) %>%
+  mutate(superpop = replace(superpop, superpop == "East Asia (HGDP)", "EAS")) %>%
+  mutate(superpop = replace(superpop, superpop == "Oceania (HGDP)", "OCN")) %>%
+  mutate(superpop = replace(superpop, superpop == "Middle East (HGDP)", "SAS")) %>%
+  mutate(superpop = replace(superpop, superpop == "EUR,AFR", "EUR")) 
+
+bay_pal <- pnw_palette("Bay", 8, type = "continuous")
+
+plot <- ggplot() +
+  scale_color_manual(values = bay_pal[c(1,4,5,7)]) +
+  geom_line(aes(x=as.numeric(xpos_hg38), y = PC1, group = sample, color = genotype), data = SNPRelate_transformed)+
+  #geom_segment((aes(x = 45268142, xend = 46866377, y = -1.35, yend = -1.35)), size = 2, color = 'lightgrey') +
+  new_scale_color() +
+  geom_segment(aes(x = start, xend = end, y = -1.2, yend = -1.2, color = fracMatch),
+                data = (plot_sds %>% arrange(fracMatch)),
+                size = 1.2,
+                alpha = 1,
+                arrow = arrow(length = unit(0.005, "cm"), type = "closed"),
+                linejoin = "mitre",
+                lineend = "butt") +
+  # ##plot the lines above the segdups with the genes
+  geom_segment(aes(x=start, xend=end, y=-1.275, yend=-1.275),
+                data=(plot_genes %>% filter(xpos == 2)),size=.5,
+                arrow = arrow(length = unit(0.01, "cm"), type="closed"),
+                linejoin="mitre",
+                lineend="butt") +
+  geom_text(inherit.aes = FALSE, aes(x=start, y=-1.250, hjust=ifelse(strand=="+",0,1),label=name),
+             data=(plot_genes %>% filter(xpos ==2) %>% filter(do_label)),
+             size=2,
+             angle=0,
+             vjust=0,
+             fontface = 'italic') +
+   #scale_color_gradient(low = "yellow", high = "red") +
+   theme_bw()
+
+```
+
+```{r PLOTTING HERE}
+library(ggplot2)
+library(grid)  # For unit function
+library(dplyr)  # For data manipulation
+
+# Assuming bay_pal and other initial setup is already done correctly
+
+pdf(file = "/Users/samvardhinisridharan/Documents/figures/SNPRelate plots/allindiv_hg38.pdf", width = 5, height = 3)
+
+ggplot() +
+  scale_color_manual(values = bay_pal[c(1,4,5,7)]) +
+  geom_line(aes(x=as.numeric(xpos_hg38), y = PC1, group = sample, color = genotype), data = SNPRelate_transformed) +
+  geom_segment(aes(x = 45268142, xend = 46866377, y = -1.35, yend = -1.35), size = 2, color = 'lightgrey') +
+  new_scale_color() +
+  geom_segment(aes(x = start, xend = end, y = -0.4, yend = -0.4, color = fracMatch),
+               data = read_sds %>% arrange(fracMatch),
+               size = 1.2,
+               alpha = 1,
+               arrow = arrow(length = unit(0.005, "cm"), type = "closed"),
+               linejoin = "mitre",
+               lineend = "butt") +
+  ## Plot for + strand genes
+  geom_segment(data = df %>% filter(V10 == 2, V6 == "+"),
+               aes(x = V2, xend = V3, y = -0.45, yend = -0.45),
+               size = 0.5,
+               linejoin = "mitre",
+               lineend = "butt",
+               arrow = arrow(length = unit(0.01, "cm"), ends = "last", type = "closed")) +
+  ## Plot for - strand genes
+  geom_segment(data = df %>% filter(V10 == 2, V6 == "-"),
+               aes(x = V2, xend = V3, y = -0.45, yend = -0.45),
+               size = 0.5,
+               linejoin = "mitre",
+               lineend = "butt",
+               arrow = arrow(length = unit(0.01, "cm"), ends = "first", type = "closed")) +
+  ## Adding gene labels, adjusted y to -0.3 for visibility
+  geom_text(data = df %>% filter(V10 == 2),
+            aes(x = V2, y = -0.55, label = name, hjust = ifelse(V6 == "+", 0, 1)),
+            size = 1.5,  # slightly larger size for better visibility
+            angle = 45,
+            fontface = 'italic') +
+  theme_bw() +
+  coord_cartesian(xlim = c(43450000, 44370000), ylim = c(-1, 0.8))
+
+dev.off()
+```
+
+```{r}
+# Load the necessary libraries for reading the data and plotting
+library(ggplot2)
+library(dplyr)
+
+# Read the data from the uploaded file
+data <- read.csv("~/Documents/datasets/SNPRelate/upload_to_cgpt.txt", header = TRUE, sep = ",")
+
+# Subset the data for the specified range of xpos_hg38
+subset_data <- filter(data, (xpos_hg38 >= 43700000 & xpos_hg38 <= 43870000) | (xpos_hg38 >= 44000000 & xpos_hg38 <= 44200000))
+
+# Calculate the 5th to 95th percentile range for each genotype
+percentile_ranges <- subset_data %>% 
+  group_by(genotype) %>%
+  summarize(lower_bound = quantile(PC1, 0.005), upper_bound = quantile(PC1, 0.995))
+
+# Function to identify outliers based on being in the range of another genotype
+identify_outliers <- function(df, ranges) {
+  df <- merge(df, ranges, by = "genotype", suffixes = c("", "_own"))
+  for (geno in unique(ranges$genotype)) {
+    range_other <- ranges[ranges$genotype == geno,]
+    df[[paste0("outlier_in_", geno)]] <- with(df, PC1 >= range_other$lower_bound & PC1 <= range_other$upper_bound & genotype != geno)
+  }
+  return(df)
+}
+
+# Apply the function to data
+outlier_data <- identify_outliers(subset_data, percentile_ranges)
+
+# Select columns to indicate if outlier in any other genotype's range
+outlier_cols <- grep("outlier_in_", names(outlier_data), value = TRUE)
+outlier_data$outlier <- apply(outlier_data[, outlier_cols], 1, any)
+
+# Plotting the PC1 values highlighting marked outliers
+ggplot(outlier_data, aes(x = xpos_hg38, y = PC1, color = genotype)) +
+  geom_point(aes(shape = outlier), size = 1) +
+  scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 32)) + # Adjusting shape: normal points and outlier points
+  labs(title = "PC1 by xpos_hg38 with Marked Outliers Highlighted",
+       x = "Genomic Position (xpos_hg38)",
+       y = "PC1",
+       color = "Genotype",
+       shape = "Outlier Marked") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# Save the plot as a PDF file
+ggsave("Marked_Outliers_per_Genotype_Plot.pdf", width = 11, height = 8)
+
+# Filter only the marked outliers and save to a CSV file
+marked_outliers <- filter(outlier_data, outlier == TRUE)
+write.csv(marked_outliers, "marked_individual_outliers.csv", row.names = FALSE)
+
+# Output the identifiers of the marked outliers to the console
+print(marked_outliers$identifier) # Replace 'identifier' with the actual column name for individual identifiers
+```
+
+```{r plotting only the recombinants}
+library(ggplot2)
+library(grid)
+library(dplyr)
+
+# Load your main dataset
+# Assuming you have a vector of the 43 sample identifiers
+outlier_samples <- unique(marked_outliers$sample)  # Ensure 'marked_outliers' is previously defined
+
+# Filter the dataset for these samples
+outlier_data <- SNPRelate_transformed %>% 
+  filter(sample %in% outlier_samples)
+
+# Add a new column to SNPRelate_transformed for faceting
+SNPRelate_transformed$IsOutlierGenotype <- ifelse(SNPRelate_transformed$sample %in% outlier_samples, SNPRelate_transformed$genotype, NA)
+
+# Plotting
+ggplot(SNPRelate_transformed, aes(x=as.numeric(xpos_hg38), y = PC1, group = sample, color = genotype)) +
+  scale_color_manual(values = bay_pal[c(1,4,5,7)]) +
+  geom_line() +
+  new_scale_color() +
+  geom_segment(aes(x = 45268142, xend = 46866377, y = -1.35, yend = -1.35), size = 2, color = 'lightgrey') +
+  theme_bw() +
+  facet_grid(IsOutlierGenotype~.) +  # Use the new column for faceting
+  coord_cartesian(xlim = c(43450000, 44370000), ylim = c(-0.5, 0.8))
+```
+
+```{r}
+library(dplyr)
+library(data.table)
+
+# Assuming 'metadata' is your data frame and 'outlier_samples' is your vector of sample identifiers
+# Filter the metadata for the specified samples and select the relevant columns
+filtered_data <- metadata %>%
+  filter(sample %in% outlier_samples) %>%
+  select(sample, genotype, complex_genotype, pop, superpop)
+
+# Convert the resulting data frame to a data.table
+filtered_datatable <- as.data.table(filtered_data)
+
+# Now 'filtered_datatable' is a data.table object
+print(filtered_datatable)
+```
+
+```{r}
+set.seed(100)
+
+nonDCO_subset_region_10 <- "~/Documents/datasets/SNPRelate_DCO/DCO_individuals.vcf"
+snpgdsVCF2GDS(nonDCO_subset_region_10, "nonDCO_subset_region_samples_10.gds", method="biallelic.only")
+genofile <- snpgdsOpen("nonDCO_subset_region_samples_10.gds")
+
+ibs.hc <- snpgdsHCluster(snpgdsIBS(genofile, num.thread=2))
+rv <- snpgdsCutTree(ibs.hc)
+plot(rv$dendrogram, leaflab="perpendicular", main="47 DCO individuals individuals from 1000G")
+
+pca <- snpgdsPCA(genofile, autosome.only = FALSE)
+pc.percent <- pca$varprop*100
+head(round(pc.percent, 2))
+
+tab <- data.frame(sample.id = pca$sample.id, stringsAsFactors = FALSE)
+
+tab <- data.frame(sample.id = pca$sample.id,
+    EV1 = pca$eigenvect[,1],    # the first eigenvector
+    EV2 = pca$eigenvect[,2],    # the second eigenvector
+    stringsAsFactors = FALSE)
+
+merge(tab, metadata, by.x = 'sample.id', by.y = 'sample')
+
+View(merge(tab, metadata, by.x = 'sample.id', by.y = 'sample'))
+```
+
+```{r}
+# Split data by 'dataset' and 'superpop'
+
+df <- merge(tab, metadata, by.x = 'sample.id', by.y = 'sample')
+
+split_data <- split(df, df$superpop)
+
+# Create directory for output if it doesn't exist
+if (!dir.exists("output")) dir.create("output")
+
+# Save each subset to a CSV file
+for (key in names(split_data)) {
+  file_name <- paste0("output/", gsub(" ", "_", key), ".txt")  # Corrected the paste function
+  write.csv(split_data[[key]]['sample.id'], file = file_name, quote = FALSE, row.names = FALSE)
+}
+
+# Inform the user that files have been saved
+cat("Files have been saved in the 'output' directory.\n")
+```
+
+```{r}
+library(ggtree)
+library(ggplot2)
+library(dplyr)
+library(SNPRelate)
+
+AFR <-
+  "~/Documents/datasets/SNPRelate_DCO/all_haplotype_data/AFR.merged.hap.header.doubled.REGION.vcf"
+
+# Creating .gds files
+snpgdsVCF2GDS(AFR, "AFR.gds", method = "biallelic.only")
+
+# Open the GDS file
+AFR_1000G_haplotypes <- snpgdsOpen("AFR.gds")
+
+# Hierarchical clustering
+AFR_cluster <- snpgdsHCluster(snpgdsIBS(
+  AFR_1000G_haplotypes,
+  num.thread = 2,
+  autosome.only = FALSE
+))
+
+# Convert clustering result to a dendrogram and then to a phylogenetic tree
+AFR_1000G_haplotypes_TREE <- as.phylo(as.hclust(snpgdsCutTree(AFR_cluster)$dendrogram))
+
+# Reading and merging haplotype assignments
+haplotype_assignment_AFR <- read.csv("~/Documents/datasets/linkage/haplotype_assignment.txt") %>% 
+  filter(superpop == 'AFR') %>% 
+  mutate(sample = sub("_hap[1-2]$", "", individual_haplotype)) # Adjusting the haplotype names
+
+tree_data <- merge(
+  as_tibble(AFR_1000G_haplotypes_TREE),
+  haplotype_assignment_AFR,
+  by.x = "label", 
+  by.y = "individual_haplotype")
+
+# Update tree data
+AFR_1000G_haplotypes_TREE <- as.treedata(tree_data)
+
+# Reading subpopulation information
+subpopulation_info_df <- read.delim("~/Documents/datasets/genotype_CNV/hgdp_sgdp_1kg_summary.txt")
+
+# Merge with subpopulation info if needed here...
+
+# Plotting the tree
+ggtree(
+  AFR_1000G_haplotypes_TREE,
+  aes(color = superpop),
+  layout = "rectangular",
+  branch.length = "branch.length",
+  size = 0.2
+) + 
+  geom_tippoint(aes(color = assigned_haplotype), alpha = 0.25) + 
+  theme_tree2()
+```
+
+```{r FINAL - Merging hg38 data with the PGRTK plot}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(patchwork)
+
+# Shared x-axis range
+x_min <- 45268142
+#x_min <- 45320000
+x_max <- 46921463
+#x_max <- 46970000
+x_range <- c(x_min, x_max)
+
+ordered_1KG_HGDP_SNPRelate_new <- ordered_1KG_HGDP_SNPRelate %>% filter(variable > 45268142 & variable < 46921463)
+
+library(plotly)
+
+# PCA Plot
+pca_plot <- ggplot(ordered_1KG_HGDP_SNPRelate_new %>% filter(variable > x_min) %>% filter(variable < x_max), 
+                   #%>% filter(sample_id %in% c("HGDP00247", "NA20276", "HGDP00608", "LP6005441-DNA_F02", "HGDP00608", "HGD01768")), 
+                   aes(x = variable, y = abs(value), group = sample_id, color = genotype)) +
+  geom_line() +
+  scale_color_manual(values = c("#74677e", "#ebbdc8", "#ac8eab", "#f2cec7")) +
+  coord_cartesian(xlim = x_range, 
+                  ylim = c(0, 0.09)) +
+  labs(y = "PC1 (8.7%)") +
+  theme_bw() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.grid = element_blank(),
+    panel.border = element_blank(),
+    axis.line.y = element_line(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks.y = element_line(color = "black")
+  )
+
+plotly::ggplotly(pca_plot)
+
+# Heatmap
+heatmap_plot_aligned <- heatmap_plot +
+  scale_x_continuous(limits = x_range, expand = c(0, 0)) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  )
+
+# Gene Plot
+gene_plot <- hg38_pgrtk_bundle_plot +
+  coord_cartesian(xlim = x_range) +
+  labs(x = "chromosome 17 genomic position (hg38)", y = "") +
+  theme(
+    axis.line.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+# Combine using patchwork
+combined_plot <- pca_plot / heatmap_plot / annotations_plot / gene_plot +
+  plot_layout(ncol = 1, heights = c(5, 15, 10, 3.5))
+
+#assurng the same x-axis in each
+
+# Apply to all plots
+pca_plot <- pca_plot +
+  coord_cartesian(xlim = x_limits, ylim = c(0, 0.09)) +
+  theme(axis.text.x = element_blank(), axis.title.x = element_blank(), axis.ticks.x = element_blank())
+
+heatmap_plot <- heatmap_plot + 
+  coord_cartesian(xlim = x_limits) +
+  theme(axis.text.x = element_blank(), axis.title.x = element_blank(), axis.ticks.x = element_blank())
+
+heatmap_plot_representative_individuals <- heatmap_plot_representative_individuals + 
+  coord_cartesian(xlim = x_limits) +
+  theme(axis.text.x = element_blank(), axis.title.x = element_blank(), axis.ticks.x = element_blank())
+
+gene_plot <- gene_plot + 
+  coord_cartesian(xlim = x_limits)
+
+# Combine with patchwork
+combined_plot <- pca_plot / heatmap_plot / heatmap_plot_representative_individuals / gene_plot +
+    plot_layout(ncol = 1, heights = c(5, 15, 3.5, 4))
+
+# Plot
+print(combined_plot)
+
+ggsave(
+  filename = "~/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/four_panel_pca_recomb_annotations_pgrtk.pdf",
+  plot = combined_plot,
+  width = 20,
+  height = 20,
+  units = "in",         # Ensure correct physical dimensions
+  dpi = 600,            # High resolution
+  limitsize = FALSE
+)
+```
+

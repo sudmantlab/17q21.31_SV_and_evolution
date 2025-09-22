@@ -1,0 +1,727 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+ordered_1KG_HGDP_SNPRelate <- read.csv("~/Documents/datasets/SNPRelate/HGDP+1000G/sliding-windows_1000G_HGDP.csv", check.names = FALSE)
+
+combined_summary_table
+
+final_SNPRelate_df <- merge(combined_summary_table, ordered_1KG_HGDP_SNPRelate, by = "sample")
+
+SNPRelate_transformed <- final_SNPRelate_df %>% drop_na() %>% pivot_longer(-c("sample", "dataset", "genotype", "complex_genotype", "hap1", "hap2", "pop", "superpop"), names_to = "xpos_hg38", values_to = "PC1") %>%
+  mutate(superpop = replace(superpop, superpop == "Central South Asia (HGDP)", "CSA")) %>%
+  mutate(superpop = replace(superpop, superpop == "Africa (HGDP)", "AFR")) %>%
+  mutate(superpop = replace(superpop, superpop == "America (HGDP)", "AMR")) %>%
+  mutate(superpop = replace(superpop, superpop == "Oceania (SGDP),Oceania (HGDP)", "OCN")) %>%
+  mutate(superpop = replace(superpop, superpop == "Europe (HGDP)", "EUR")) %>%
+  mutate(superpop = replace(superpop, superpop == "East Asia (HGDP)", "EAS")) %>%
+  mutate(superpop = replace(superpop, superpop == "Oceania (HGDP)", "OCN")) %>%
+  mutate(superpop = replace(superpop, superpop == "Middle East (HGDP)", "SAS")) %>%
+  mutate(superpop = replace(superpop, superpop == "EUR,AFR", "EUR")) %>%
+  filter(xpos_hg38 %in% 45200000:47300000) #this is the range of Peter's 17q21.31 plotting code
+```
+
+```{r Figure 5A - Sliding window PCA}
+library(plotly)
+
+# Shared x-axis range
+x_min <- 45268142
+x_max <- 46921463
+x_range <- c(x_min, x_max)
+
+ordered_1KG_HGDP_SNPRelate_new <- SNPRelate_transformed %>% 
+  mutate(xpos_hg38 = as.numeric(xpos_hg38)) %>%
+  filter(xpos_hg38 > x_min & xpos_hg38 < x_max)
+  
+# PCA Plot
+pca_plot <- ggplot(ordered_1KG_HGDP_SNPRelate_new %>% 
+                     # filtering for specific samples and regions here
+                     #filter(sample %in% block_summary_wide$samples_in_block[[1]]) %>%
+                     #filter(sample %in% c("HGDP00070", "HG03304", "HGDP00940","HG02557", "NA19025")) %>%
+                     #filter(sample %in% outliers_filtered_single_recombinant$sample) %>%
+                     filter(genotype == "H1H2") %>%
+                     filter(xpos_hg38 > x_min) %>% 
+                     filter(xpos_hg38 < x_max),
+                   aes(x = xpos_hg38, 
+                       y = PC1, 
+                       group = sample, 
+                       color = genotype)) +
+  geom_line() +
+  scale_color_manual(values = c("#22492e","#ba7999", "#2c6184")) +
+  #coord_cartesian(xlim = x_range, 
+                  #ylim = c(-0.2, 0.2)) +
+  labs(y = "PC1 (8.7%)") +
+  theme_bw() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.grid = element_blank(),
+    panel.border = element_blank(),
+    axis.line.y = element_line(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks.y = element_line(color = "black")
+  ) +
+  geom_point(x=45470001, y=-0.05)+
+  geom_point(x=45480001, y=-0.05)+
+  geom_point(x=45500001, y=-0.05)
+  #coord_cartesian(xlim = c(45440001 - 40000, 45480001 + 40000), ylim = c(-0.1, 0.1))
+
+ #coord_cartesian(xlim = c(45470001 + 10000,46310000 - 20000))
+
+print(pca_plot)
+
+pca_plot
+```
+
+```{r Figure 5B - Sliding window PCA colored by complex haplotype}
+library(RColorBrewer)
+
+order = c(
+  "H1/H1",
+  "H1/H1D",   
+  "H1D/H1D",  
+  "H1D/H1DD", 
+  "H1/H2",
+  "H1/H2D", 
+  "H1D/H2D",
+  "H1D/H2",
+  "H1DD/H2D",
+  "H2/H2",
+  "H2/H2D",   
+  "H2D/H2D")  
+
+
+SNPRelate_transformed$complex_genotype = factor(SNPRelate_transformed$complex_genotype,levels=order)
+SNPRelate_transformed$genotype <- factor(SNPRelate_transformed$genotype, levels = c("H2H2", "H1H2", "H1H1"))
+
+g=ggplot(SNPRelate_transformed %>% 
+           mutate(xpos_hg38 = as.numeric(xpos_hg38)) %>%
+           #filter(sample %in% block_summary_wide$samples_in_block[[1]]) %>%
+           filter(xpos_hg38 > 45418000) %>%
+           filter(xpos_hg38 < 46330000))
+           # mutate(PC1=ifelse(xpos_hg38<45448000,0,PC1),
+           #                  PC1=ifelse(xpos_hg38>46310000,0,PC1)))
+
+g = g+geom_line(aes(x=xpos_hg38,y=PC1,group=sample,color=complex_genotype))+
+  theme_bw()+
+  #scale_x_continuous(lim=c(46050000,46310000))+
+  #coord_cartesian(xlim=c(45448000,46310000),ylim=c(-.01,.07))+
+  coord_cartesian(xlim = x_range, ylim=c(-.03,.08))+
+  scale_color_manual(values = c("#00441b", "#74c476", "#238b45", "#006d2c","#67000d","#cb181d",  "#f768a1", "#b02978", "#dd3497", "#08306b","#2171b5","#1c9099")) +
+  #scale_color_manual(values=rep(brewer.pal(name="Set1",n=7),2))+ + 
+  #scale_color_manual(values=c(brewer.pal(name="Greens",n=4),brewer.pal(name="Blues",n=5),brewer.pal(name="Reds",n=3)))+
+  #scale_color_manual(values=rep(viridis(7),2))+
+  #scale_color_viridis_d()+
+  facet_wrap(~genotype,ncol=1)+
+  theme_void() +
+  geom_point(x=45470001, y=-0.05)+
+  geom_point(x=45480001, y=-0.05)+
+  geom_point(x=45500001, y=-0.05)+
+  theme(legend.key.size=) 
+
+```
+
+```{r Figure 5C - Data processing: determine DCO events and individuals}
+
+ordered_1KG_HGDP_SNPRelate_new # all the data values 
+
+determining_DCO_raw <- ordered_1KG_HGDP_SNPRelate_new
+
+summary_stats_DCO <- determining_DCO_raw %>%
+  group_by(genotype, xpos_hg38) %>%
+  summarise(
+    PC1_mean = mean(PC1, na.rm = TRUE),
+    PC1_p01 = quantile(PC1, probs = 0.01, na.rm = TRUE),
+    PC1_p05 = quantile(PC1, probs = 0.05, na.rm = TRUE),
+    PC1_p25 = quantile(PC1, probs = 0.25, na.rm = TRUE),
+    PC1_p50 = quantile(PC1, probs = 0.50, na.rm = TRUE),
+    PC1_p75 = quantile(PC1, probs = 0.75, na.rm = TRUE),
+    PC1_p95 = quantile(PC1, probs = 0.95, na.rm = TRUE),
+    PC1_p99 = quantile(PC1, probs = 0.99, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Join back to the original dataframe
+determining_DCO_with_stats <- determining_DCO_raw %>%
+  left_join(summary_stats_DCO, by = c("genotype", "xpos_hg38"))
+
+# Calculate the percentile ranges
+range_summary <- determining_DCO_with_stats %>%
+  group_by(genotype, xpos_hg38) %>%
+  summarise(
+    range_01_99 = paste0("(", round(quantile(PC1, 0.01, na.rm = TRUE), 4), ", ", round(quantile(PC1, 0.99, na.rm = TRUE), 4), ")"),
+    range_05_95 = paste0("(", round(quantile(PC1, 0.05, na.rm = TRUE), 4), ", ", round(quantile(PC1, 0.95, na.rm = TRUE), 4), ")"),
+    range_25_75 = paste0("(", round(quantile(PC1, 0.25, na.rm = TRUE), 4), ", ", round(quantile(PC1, 0.75, na.rm = TRUE), 4), ")"),
+    .groups = "drop"
+  )
+
+# Helper function to extract min/max and determine overlap
+extract_and_flag <- function(df, range_col, label) {
+  df %>%
+    separate({{ range_col }}, into = c("min", "max"), sep = ", ", remove = FALSE) %>%
+    mutate(
+      min = as.numeric(str_remove(min, "\\(")),
+      max = as.numeric(str_remove(max, "\\)"))
+    ) %>%
+    group_by(xpos_hg38) %>%
+    mutate(
+      overlap = max(min) <= min(max),
+      !!paste0("heatmap_include_", label) := !overlap
+    ) %>%
+    ungroup() %>%
+    select(-min, -max, -overlap)
+}
+
+# Start with range_summary
+range_summary_with_flags <- range_summary %>%
+  extract_and_flag(range_01_99, "01_99") %>%
+  extract_and_flag(range_05_95, "05_95") %>%
+  extract_and_flag(range_25_75, "25_75")
+
+tracks_long <- range_summary_with_flags %>%
+  select(xpos_hg38, genotype,
+         heatmap_include_01_99,
+         heatmap_include_05_95,
+         heatmap_include_25_75) %>%
+  pivot_longer(cols = starts_with("heatmap_include"),
+               names_to = "range_type",
+               values_to = "include") %>%
+  mutate(
+    range_type = factor(range_type,
+                        levels = c("heatmap_include_01_99", "heatmap_include_05_95", "heatmap_include_25_75"),
+                        labels = c("01–99%", "05–95%", "25–75%"))
+  )
+
+tracks_per_percentile <- ggplot(tracks_long, aes(x = xpos_hg38, y = genotype, fill = include)) +
+  geom_tile(height = 0.9) +
+  facet_wrap(~ range_type, ncol = 1, strip.position = "left") +
+  scale_fill_manual(values = c("TRUE" = "#1b7837", "FALSE" = "#d73027"),
+                    name = "",
+                    labels = c("FALSE" = "Regions with noise in PC1 (exclude)", "TRUE" = "Regions without noise in PC1 (include)")) +
+  labs(
+    x = "Genomic position (hg38)",
+    y = "Percentile range"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    strip.text = element_text(face = "bold"),
+    panel.grid = element_blank(),
+    axis.text.y = element_text(face = "bold"),
+    axis.text.x = element_text(angle = 0, hjust = 1),
+    legend.position = "top"
+  ) +
+  coord_cartesian(xlim = x_range)
+
+pca_plot <- pca_plot +
+  coord_cartesian(xlim = x_range)
+
+gene_plot <- gene_plot + 
+  coord_cartesian(xlim = x_range)
+
+# Combine with patchwork
+combined_plot_tracks_per_percentile <- pca_plot /tracks_per_percentile / gene_plot +
+    plot_layout(ncol = 1, heights = c(8, 4, 4))
+
+# Plot
+print(combined_plot_tracks_per_percentile)
+
+# ggsave(
+#   filename = "~/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/supplemental_figure_percentile_overlaps.pdf",
+#   plot = combined_plot_tracks_per_percentile,
+#   width = 20,
+#   height = 15,
+#   units = "in",         # Ensure correct physical dimensions
+#   dpi = 600,            # High resolution
+#   limitsize = FALSE
+# )
+
+# Step 1: Extract numeric bounds from range_05_95
+range_05_95_numeric <- range_summary %>%
+  select(genotype, xpos_hg38, range_05_95) %>%
+  separate(range_05_95, into = c("min_05", "max_95"), sep = ", ", remove = FALSE) %>%
+  mutate(
+    min_05 = as.numeric(str_remove(min_05, "\\(")),
+    max_95 = as.numeric(str_remove(max_95, "\\)"))
+  )
+
+# Step 2: Get inclusion flags for range 05–95%
+tracks_05_95 <- tracks_long %>%
+  filter(range_type == "05–95%") %>%
+  select(genotype, xpos_hg38, include)  # keep TRUE/FALSE
+
+# Step 3: Join the range and include info
+range_with_flags <- range_05_95_numeric %>%
+  left_join(tracks_05_95, by = c("genotype", "xpos_hg38"))
+
+# Step 4: Join with the sample dataframe
+joined_df <- ordered_1KG_HGDP_SNPRelate_new %>%
+  left_join(range_with_flags, by = c("genotype", "xpos_hg38"))
+
+# Step 5: Determine OUTLIER status
+# - genotype if in range
+# - OUTLIER label if outside the range
+# - "EXCLUDED FOR NOISE" if include == FALSE
+final_df <- joined_df %>%
+  mutate(
+    OUTLIER = case_when(
+      include == FALSE ~ "EXCLUDED FOR NOISE",
+      is.na(min_05) | is.na(PC1) ~ NA_character_,
+      PC1 >= min_05 & PC1 <= max_95 ~ genotype,
+      TRUE ~ "OUTLIER"  # mark as outlier to this genotype
+    )
+  )
+
+library(dplyr)
+
+# Step 1: Identify outliers
+outliers <- identify_outliers(final_df)
+
+# Step 2: Count outliers per sample
+outliers <- outliers %>% 
+  group_by(sample) %>% 
+  mutate(outliers_count = sum(is_outlier)) %>%
+  ungroup()
+
+# Step 3: Filter those with more than 1 outlier
+outliers_filtered <- outliers %>% 
+  filter(outliers_count > 1)
+
+outliers_filtered_single_recombinant <- outliers_filtered %>%
+  filter(is_outlier == TRUE) %>%
+  filter(xpos_hg38 > 45440001 - 40000) %>%
+  filter(xpos_hg38 < 45480001 + 40000) %>%
+  group_by(sample) %>%
+  summarise(max_xpos = max(xpos_hg38), .groups = "drop")
+
+  
+
+# Step 4: Add bounds for reassignment
+bounds_df <- range_summary %>% 
+  dplyr::select(genotype, xpos_hg38, range_05_95) %>%
+  mutate(xpos_hg38 = as.numeric(xpos_hg38))
+
+outliers_filtered <- outliers_filtered %>%
+  left_join(bounds_df, by = c("genotype", "xpos_hg38"))
+
+# Step 5: Make sure positions are numeric and sorted
+outliers_filtered <- outliers_filtered %>%
+  mutate(xpos_hg38 = as.numeric(xpos_hg38)) %>%
+  arrange(sample, xpos_hg38)
+
+# Step 6: Check if neighbors are also outliers
+outliers_filtered <- outliers_filtered %>%
+  group_by(sample) %>%
+  mutate(
+    prev_outlier = lag(is_outlier, order_by = xpos_hg38),
+    next_outlier = lead(is_outlier, order_by = xpos_hg38),
+    in_run = is_outlier & (prev_outlier | next_outlier)
+  ) %>%
+  ungroup()
+
+# Step 7: Apply reassignment only for outliers in a run
+outliers_filtered <- outliers_filtered %>%
+  mutate(
+    final_assignment = case_when(
+      in_run & genotype == "H1H1" ~ "H1H2",
+      in_run & genotype == "H2H2" ~ "H1H2",
+      in_run & genotype == "H1H2" & PC1 < min_05 ~ "H1H1",
+      in_run & genotype == "H1H2" & PC1 > max_95 ~ "H2H2",
+      TRUE ~ genotype
+    )
+  )
+
+final_df <- outliers_filtered
+
+# outliers <- outliers %>%
+#   arrange(sample, xpos_hg38) %>%
+#   group_by(sample) %>%
+#   mutate(
+#     is_consecutive = is_outlier & (lag(is_outlier, default = FALSE) | lead(is_outlier, default = FALSE))
+#   ) %>%
+#   ungroup() %>%
+#   filter(is_consecutive)
+
+#final_df <- outliers
+
+# Step 1: Create a wide matrix of OUTLIER values
+mat_wide <- final_df %>%
+  select(sample, xpos_hg38, final_assignment) %>%
+  pivot_wider(names_from = xpos_hg38, values_from = final_assignment)
+
+# Step 2: Convert OUTLIER categories to numeric codes
+# Assign fixed numeric codes (make sure they map to your color scheme)
+outlier_levels <- c("H1H1", "H1H2", "H2H2", "H1H1*", "H1H2*", "H2H2*", "EXCLUDED FOR NOISE")
+mat_numeric <- mat_wide %>%
+  mutate(across(-sample, ~ as.numeric(factor(., levels = outlier_levels)))) %>%
+  column_to_rownames("sample") %>%
+  as.matrix()
+
+# Step 3: Cluster rows (samples) using hierarchical clustering
+sample_dend <- hclust(dist(mat_numeric, method = "euclidean"))
+ordered_samples <- sample_dend$labels[sample_dend$order]
+
+# Step 4: Apply this sample order in your ggplot
+final_df <- final_df %>%
+  mutate(sample = factor(sample, levels = ordered_samples))
+
+final_df <- final_df %>%
+  mutate(xpos_factor = factor(xpos_hg38))  # treat x as discrete factor
+
+# Step 5: Plot
+heatmap_plot_NEW <- ggplot(final_df %>%
+                             filter(xpos_hg38 < 46130001 + 20000),  aes(x = as.numeric(as.character(xpos_hg38)), y = sample, fill = final_assignment)) +
+  geom_tile(height = 0.9) +
+  scale_fill_manual(
+    values = c(
+      "H1H1" = "#22492e",
+      "H1H2" = "#ba7999",
+      "H2H2" = "#2c6184",
+      "EXCLUDED FOR NOISE" = "white"),
+    na.value = "grey80",
+    name = "Genotype / Outlier"
+  ) +
+  labs(
+    x = "Genomic position (hg38)",
+    y = "Sample"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "right"
+  ) + 
+  coord_cartesian(xlim  = x_range)
+
+pca_plot <- pca_plot +
+  coord_cartesian(xlim = x_range, ylim = c(-0.2, 0.2)) 
+
+gene_plot <- gene_plot + 
+  coord_cartesian(xlim = x_range)
+
+# Combine with patchwork
+combined_plot_tracks_pca_heatmap_genes <- pca_plot / heatmap_plot_NEW / gene_plot +
+    plot_layout(ncol = 1, heights = c(8, 8, 4))
+
+# Plot
+print(combined_plot_tracks_pca_heatmap_genes)
+
+# ggsave(
+#   filename = "~/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/pca_heatmap_genes.pdf",
+#   plot = combined_plot_tracks_pca_heatmap_genes,
+#   width = 20,
+#   height = 15,
+#   units = "in",         # Ensure correct physical dimensions
+#   dpi = 600,            # High resolution
+#   limitsize = FALSE
+# )
+```
+
+```{r Figure 5D}
+
+x_range = c(45448000 + 30000, 46310000 - 40000)
+
+library(dplyr)
+
+# Step 1: Filter for DCOs — where final_assignment ≠ genotype
+filtered_data <- final_df %>%
+  filter(final_assignment != genotype)
+
+# Step 2: Identify consecutive runs — order by sample and xpos
+filtered_data <- filtered_data %>%
+  arrange(sample, xpos_hg38) %>%
+  group_by(sample, genotype, final_assignment, superpop, region = superpop) %>%
+  mutate(group = cumsum(c(1, diff(xpos_hg38) != 10000)))  # 10kb window step assumed
+
+# Step 3: Summarize each group into a DCO block
+dco_result <- filtered_data %>%
+  group_by(sample, group, genotype, final_assignment, superpop, region) %>%
+  filter(n() >= 2) %>%  # keep all, or change to n() >= 2 to require 2+ windows
+  summarise(
+    track_start = min(xpos_hg38),
+    track_end = max(xpos_hg38),
+    block_length = max(xpos_hg38) - min(xpos_hg38) + 10000,
+    n_windows = n(),
+    .groups = "drop"
+  ) %>%
+  select(sample, track_start, track_end, block_length, n_windows,
+         original_genotype = genotype,
+         reassigned_genotype = final_assignment,
+         superpop, region)
+
+block_summary <- dco_result %>%
+  filter(block_length >= 10000) %>%
+  filter(track_start > 45268142) %>%
+  filter(track_end < 46921463) %>%
+  count(track_start, track_end, block_length, superpop, name = "region_n") %>%  # count per region
+  group_by(track_start, track_end, block_length) %>%
+  mutate(total_n = sum(region_n)) %>%  # total samples for that block
+  mutate(fraction = region_n / total_n) %>%
+  ungroup()
+
+block_summary_wide <- block_summary %>%
+  select(track_start, track_end, superpop, fraction, block_length, total_n) %>%
+  pivot_wider(
+    id_cols = c(track_start, track_end, block_length, total_n),
+    names_from = superpop,
+    values_from = fraction,
+    values_fill = 0
+  )
+
+block_summary <- block_summary_wide %>%
+  dplyr::filter(track_end < 46250000) %>%
+  #dplyr::filter() %>%
+  arrange(track_start) %>%
+  mutate(
+    overlap = if_else(row_number() == 1, TRUE, track_start <= lag(track_end, default = -Inf)),
+    group = cumsum(!overlap)
+  ) %>%
+  group_by(group) %>%
+  mutate(row_id = row_number()) %>%
+  ungroup() %>%
+  select(-overlap, -group)
+
+block_summary <- block_summary %>%
+  mutate(
+  SAS = SAS + CSA  # combine South and Central Asia
+  ) %>%
+  dplyr::select(-CSA) %>%
+  dplyr::rename(N = total_n)
+
+# # Step 1: Add row_id to block_summary and pie_data
+# block_summary <- block_summary %>%
+#   mutate(row_id = row_number())
+
+pie_data <- block_summary %>%
+  mutate(pie_x = track_end + 20000,
+         pie_y = row_id) %>%
+  dplyr::select(row_id, pie_x, pie_y, all_of(region_cols))
+
+extra_rows <- tibble(
+  row_id = c(1, 2, 3),
+  pie_x   = c(45490001, 45500001, 45500001),
+  pie_y   = c(1, 2, 3),
+  AFR     = c(0,0.8, 0.5),
+  EUR     = c(0.5,0.075,0.25),
+  AMR     = c(0,0.05,0),
+  SAS     = c(0.5,0.075,0.25)
+)
+
+pie_data <- bind_rows(pie_data, extra_rows)
+
+# Step 2: Create base plot (no pies yet)
+base_plot <- ggplot() +
+  # Rectangles
+  geom_rect(data = block_summary,
+            aes(xmin = track_start, xmax = track_end, ymin = row_id - 0.4, ymax = row_id + 0.4),
+            fill = "steelblue", color = "black") +
+  
+  # Sample count labels
+  geom_text(data = block_summary,
+            aes(x = (track_start + track_end) / 2, y = row_id, label = N),
+            size = 3, vjust = -1.2) +
+  # Axis & theme
+  scale_x_continuous(limits = c(45268142, 46921463 + 250000)) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid = element_blank()
+  ) +
+  labs(
+    x = "Genomic coordinate (bp)",
+    y = NULL
+    #title = "Genomic blocks with sample counts and regional composition"
+  ) +
+  coord_cartesian(clip = "off")  # Allow pies to spill beyond plot area
+
+# Create pie grobs
+pie_grobs <- lapply(1:nrow(block_summary), function(i) {
+  pie_data_long <- pie_data[i, ] %>%
+    pivot_longer(cols = all_of(region_cols), names_to = "region", values_to = "count")
+
+  ggpie <- ggplot(pie_data_long, aes(x = "", y = count, fill = region)) +
+    geom_bar(stat = "identity", width = 1) +
+    coord_polar("y") +
+    theme_void() +
+    theme(legend.position = "none") +
+    scale_fill_manual(
+  values = c(
+    AFR = "#D62839",   # Red
+    EUR = "#005BBB",   # Blue
+    AMR = "#00A676",   # Teal
+    SAS = "#FFC107"    # Gold
+  )
+)
+
+  ggplotGrob(ggpie)
+})
+
+# Copy base plot to modify
+combined_plot <- base_plot
+
+# Append pies
+for (i in 1:nrow(block_summary)) {
+  combined_plot <- combined_plot +
+    annotation_custom(
+      grob = pie_grobs[[i]],
+      xmin = block_summary$track_end[i] + 15000,
+      xmax = block_summary$track_end[i] + 30000,
+      ymin = block_summary$row_id[i] - 0.5,
+      ymax = block_summary$row_id[i] + 0.5
+    )
+}
+
+# Show plot
+ annotations_plot <- combined_plot
+ 
+ pca_plot <- pca_plot +
+  coord_cartesian(xlim = x_range, ylim = c(-0.1, 0.1)) 
+ 
+ g <- g +
+  coord_cartesian(xlim = x_range, ylim = c(-0.1, 0.1)) 
+ 
+ heatmap_plot_NEW <- heatmap_plot_NEW +
+   coord_cartesian(xlim = x_range)
+ 
+ annotations_plot <- annotations_plot + 
+   coord_cartesian(xlim = x_range)
+ 
+gene_plot <- gene_plot + 
+  theme(legend.position = "none") +
+  coord_cartesian(xlim = x_range)
+
+# Combine with patchwork
+combined_plot_tracks_pca_heatmap_annotations_genes <- pca_plot / g / annotations_plot / gene_plot +
+    plot_layout(ncol = 1, heights = c(8, 16, 4, 8))
+
+# Plot
+print(combined_plot_tracks_pca_heatmap_annotations_genes)
+
+ggsave(
+  filename = "~/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/pca_heatmap_annotations_genes.pdf",
+  plot = combined_plot_tracks_pca_heatmap_annotations_genes,
+  width = 20,
+  height = 15,
+  units = "in",         # Ensure correct physical dimensions
+  dpi = 600,            # High resolution
+  limitsize = FALSE
+)
+
+#This has taken a sample from each of the 16 rows 
+representative_individuals <- dco_tracks %>%
+  dplyr::group_by(track_start, track_end, length) %>%
+  dplyr::slice(1) %>%  # or use slice_sample(n = 1) for random representative
+  ungroup()
+
+representative_individuals <- representative_individuals %>%
+  arrange(track_start, track_end) %>%
+  mutate(
+    track_start = floor(track_start / 10000) * 10000,
+    track_end = ceiling(track_end / 10000) * 10000,
+    row_id = row_number()
+  )
+
+# Define the full range of 10kb windows
+positions <- seq(x_range[1], x_range[2], by = 10000)
+
+# Assign row_id to each representative track
+representative_individuals <- representative_individuals %>%
+  arrange(track_start, track_end) %>%
+  mutate(row_id = row_number())
+
+# Expand grid: one row per position per track
+tile_grid <- expand.grid(
+  xpos_hg38 = positions,
+  row_id = representative_individuals$row_id
+) %>%
+  left_join(representative_individuals %>% select(row_id, track_start, track_end), by = "row_id") %>%
+  mutate(
+    in_track = xpos_hg38 >= track_start & xpos_hg38 < track_end,
+    fill_color = ifelse(in_track, "black", "white")
+  )
+
+heatmap_plot_representative <- ggplot(tile_grid, 
+                                      aes(x = xpos_hg38 - 5000, 
+                                          y = row_id + 2, 
+                                          fill = fill_color)) +
+  geom_tile(width = 10000, height = 0.9) +
+  scale_fill_identity() +  # fill uses exact color values
+  labs(
+    x = "Genomic position (hg38)",
+    y = "Representative DCO blocks"
+  ) +
+  coord_cartesian(xlim = x_range) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "none"
+  )
+
+x_range = c(45448000 + 10000, 46310000 - 20000)
+
+ pca_plot <- pca_plot +
+  coord_cartesian(xlim = x_range, ylim = c(-0.1, 0.1)) 
+ 
+ g <- g +
+   coord_cartesian(xlim = x_range, ylim = c(-0.1, 0.1)) 
+   #coord_cartesian(xlim = x_range)
+   #coord_cartesian(ylim=c(-.03,.08))
+ 
+ # heatmap_plot_NEW <- heatmap_plot_NEW +
+ #   coord_cartesian(xlim = c(45418000,46330000))
+ 
+ heatmap_plot_representative <- heatmap_plot_representative + 
+   coord_cartesian(xlim = c(45418000,46330000))
+   #coord_cartesian(xlim = x_range)
+ 
+gene_plot <- gene_plot + 
+  coord_cartesian(xlim = x_range)
+
+# Combine with patchwork
+combined_plot_tracks_pca_heatmap_annotations_genes <- pca_plot / g /  heatmap_plot_representative / gene_plot +
+  coord_cartesian(xlim = x_range) + 
+  plot_layout(ncol = 1, heights = c(6, 15, 9, 4)) 
+
+# Plot
+print(combined_plot_tracks_pca_heatmap_annotations_genes)
+
+ggsave(
+  filename = "~/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/pca_pca_complex_geno_heatmap_annotations_REPRESENTATIVE_genes.pdf",
+  plot = combined_plot_tracks_pca_heatmap_annotations_genes,
+  width = 20,
+  height = 25,
+  units = "in",         # Ensure correct physical dimensions
+  dpi = 600,            # High resolution
+  limitsize = FALSE
+)
+```
+
+```{r debugging single recombinants}
+dco_result_filtered <- dco_result %>%
+  #filter(track_end < 45700000) %>%
+  mutate(
+    block_id = row_number(),
+    color = case_when(
+      original_genotype == "H1H1" & reassigned_genotype == "H1H2" ~ "red",
+      original_genotype == "H1H1" & reassigned_genotype == "H2H2" ~ "pink",
+      original_genotype == "H1H2" & reassigned_genotype == "H2H2" ~ "blue",
+      TRUE ~ "gray"  # default color for all other transitions
+    )
+  )
+
+ggplot(dco_result_filtered, aes(x = track_start, xend = track_end, y = block_id, yend = block_id)) +
+  geom_segment(aes(color = color), size = 2) +
+  scale_color_identity() +
+  labs(x = "Genomic Position", y = "Block Index", title = "Track Blocks by Genotype Transition") +
+  theme_minimal()
+
+#H1H2 individuals
+# HG01673
+```
+

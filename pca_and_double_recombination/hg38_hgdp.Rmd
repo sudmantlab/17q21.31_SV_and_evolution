@@ -1,0 +1,1882 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r loading libraries}
+library(tidyverse)
+library(dplyr)
+library(MASS)
+library(SNPRelate)
+library(tibble)
+library(PNWColors)
+library(ggnewscale)
+library(gridExtra)
+library(SeqArray)
+library(reshape2)
+```
+
+```{r calculating PC values for all individuals}
+# Load necessary libraries
+library(SNPRelate)
+library(dplyr)
+
+# List GDS files
+gds_files_1KG_HGDP <- list.files("~/Documents/notebooks/local_gene_trees", pattern = "*.gds$", full.names = TRUE, recursive = TRUE)
+
+# Initialize an empty data frame for storing PCA results with sample IDs
+ordered_1KG_SNPRelate <- NULL
+output_file <- "~/Documents/datasets/SNPRelate/HGDP+1000G/1KG/ordered_1KG_HGDP_SNPRelate_hg38.csv"
+
+# Function to write results to CSV
+write_results_to_csv <- function(data, file, append = FALSE) {
+  write.table(data, file, append = append, sep = ",", col.names = !append, row.names = FALSE)
+}
+
+# Loop through GDS files
+for (i in 1:length(gds_files_1KG_HGDP)) {
+  gds.fn <- gds_files_1KG_HGDP[i]
+  print(paste("Processing file:", gds.fn))
+  
+  # Extract file information
+  only_file_name <- strsplit(gds.fn, "/")[[1]][length(strsplit(gds.fn, "/")[[1]])]
+  print(paste("File name:", only_file_name))
+  
+  dataset <- strsplit(only_file_name, "\\.")[[1]][1]
+  print(paste("Dataset:", dataset))
+  
+  window_start <- strsplit(only_file_name, "\\.")[[1]][2]
+  print(paste("Window start:", window_start))
+  
+  # Open GDS file
+  genofile <- seqOpen(gds.fn)
+  print("GDS file opened successfully")
+  
+  # Perform PCA
+  pca_window <- tryCatch({
+    snpgdsPCA(genofile, autosome.only = FALSE)
+  }, error = function(e) {
+    message(paste("Error performing PCA for", gds.fn, ":", e$message))
+    seqClose(genofile)
+    return(NULL)
+  })
+  
+  if (is.null(pca_window)) {
+    next
+  }
+  
+  print("PCA completed successfully")
+  
+  # Extract sample IDs and PCA results
+  sample_ids <- pca_window$sample.id
+  pca_values <- as.double(pca_window$eigenvect[,2])
+  
+  # Initialize the data frame with sample IDs if it's the first successful iteration
+  if (is.null(ordered_1KG_SNPRelate)) {
+    ordered_1KG_SNPRelate <- data.frame(sample_id = sample_ids)
+  }
+  
+  # Ensure the sample IDs match
+  if (!all(ordered_1KG_SNPRelate$sample_id == sample_ids)) {
+    stop("Sample IDs do not match.")
+  }
+  
+  # Add PCA results to the data frame
+  ordered_1KG_SNPRelate[[paste("slidingwindow_", dataset, ".", window_start, sep="")]] <- pca_values
+  
+  # Write the updated data frame to CSV
+  write_results_to_csv(ordered_1KG_SNPRelate, output_file, append = FALSE)
+  
+  print("PCA values appended to data frame")
+  
+  # Close the GDS file
+  seqClose(genofile)
+}
+
+print("Processing completed.")
+```
+
+```{r plotting things (PLEASE EXECUTE)}
+
+read_sds = read.table("/Users/samvardhinisridharan/Documents/notebooks/17q21.31/resources_new/genomicSuperDups.txt",header=T,sep="\t") %>%
+  filter(chrom=="chr17") %>%
+  filter(chromEnd<coord_data$end,chromStart>coord_data$start) %>%
+  mutate(start = chromStart, end = chromEnd, xpos=2) %>% 
+  dplyr::select(start,end,strand,fracMatch,xpos)
+
+read_genes = read.table("/Users/samvardhinisridharan/Documents/notebooks/17q21.31/resources_new/genes_in_17q2131_hg38.txt", header = T, sep ="\t")
+
+ordered_1KG_HGDP_SNPRelate_hg38 <- read_csv("~/Documents/datasets/SNPRelate/HGDP+1000G/1KG/ordered_1KG_HGDP_SNPRelate_hg38.csv")
+
+#PC2_SNPRelate_hg38 <- read.csv("~/Documents/datasets/SNPRelate/HGDP+1000G/1KG/PC2_SNPRelate_hg38.csv")
+
+# Melt the dataset to long format
+data <- melt(ordered_1KG_HGDP_SNPRelate_hg38, id.vars = 'sample_id')
+
+#data <- melt(PC2_SNPRelate_hg38, id.vars = 'sample_id')
+
+#metadata <- read.delim("~/Documents/datasets/hgdp_sgdp_1kg_summary.txt")
+
+#metadata <- read.delim("~/Documents/datasets/final_genotype_assignments/TEMP_all_genotype assignments.csv", sep = ',')
+metadata <- data_long_filtered_trios %>% distinct(sample, dataset, genotype, complex_genotype)
+
+#metadata_part_2 <- read.csv("~/Documents/datasets/metadata/hg38_hgdp_tgp_metadata.csv")
+
+#data <- merge(data, metadata_part_2, by.x = 'sample_id', by.y = 'sample_id', all = TRUE)
+
+data <- merge(data, metadata, by.x = 'sample_id', by.y = 'sample', all = TRUE)
+
+data <- data %>% drop_na(sample_id)
+
+# Convert the variable column to numeric
+data$variable <- as.numeric(gsub('X', '', data$variable))
+
+genotype_colors <- c("H1H1" = "#00496f", "H1H2" = "#ed8b00", "H2H2" = "#dd4124")
+
+# data <- data %>%
+#   distinct(sample_id, variable, value, dataset, genotype.x, complex_genotype, pop, superpop, general_hap1, general_hap2) %>%
+#   filter(sample_id %in% unique(filtered_data$sample_id))
+
+
+# Plot the data
+pca <- ggplot(data %>% filter(!is.na(complex_genotype)) %>% filter(!(complex_genotype == 'complex_genotype_TBD'))) + 
+  geom_line(aes(x = as.numeric(variable), y = value, group = sample_id, color = genotype)) +
+  scale_color_manual(values = genotype_colors) +
+  new_scale_color() +
+  # geom_segment(aes(x = 45268142, xend = 46866377, y = -1.35, yend = -1.35), size = 2, color = 'lightgrey') +
+  # geom_segment(aes(x = 45430000, xend = 45470000, y = 0.20, yend = 0.2)) + #69 individuals in this block
+  # geom_segment(aes(x = 45545000, xend = 45555000, y = 0.20, yend = 0.2)) + #90 individuals in this block
+  # geom_segment(aes(x = 45710000, xend = 45760000, y = 0.20, yend = 0.2)) + 
+  # geom_segment(aes(x = 45805000, xend = 45815000, y = 0.20, yend = 0.2)) +
+  # geom_segment(aes(x = 46335000, xend = 46345000, y = 0.20, yend = 0.2)) +
+  #marking the KANSL1 short and long block
+  # geom_rect(aes(xmin = 46095000, xmax = 46123000, ymin = 0.2 - 0.005, ymax = 0.2 + 0.005, alpha = 0.5), color = "black") +
+  # geom_rect(aes(xmin = 46143000, xmax = 46238000, ymin = 0.2 - 0.005, ymax = 0.2 + 0.005, alpha = 0.5), color = "black") +
+  geom_segment(aes(x = start, xend = end, y = -0.165, yend = -0.165, color = fracMatch),
+                data = (read_sds %>% arrange(fracMatch)),
+                size = 1.2,
+                alpha = 1,
+                arrow = arrow(length = unit(0.005, "cm"), type = "closed"),
+                linejoin = "mitre",
+                lineend = "butt") +
+  ##plot the lines above the segdups with the genes
+  geom_segment(aes(x=start, xend=end, y=-0.175, yend=-0.175),
+                 data=(genes %>% filter(xpos == 2)),size=.5,
+                 arrow = arrow(length = unit(0.01, "cm"), type="closed"),
+                 linejoin="mitre",
+                 lineend="butt") +
+  geom_text(inherit.aes = FALSE, aes(x=start, y=-0.155, hjust=ifelse(strand=="+",0,1),label=name),
+              data=(genes %>% filter(xpos ==2) %>% filter(do_label)),
+              size=4,
+              angle=0,
+              vjust=0,
+              fontface = 'italic') +
+  scale_color_gradient(low = "lightblue", high = "darkblue") +
+  #facet_grid(sample_id~.) +
+  labs(x = 'position on chromosome 17 (hg38)', y = 'PC1 (8.1 %)') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme_light() +
+  #scale_x_continuous(limits = c(45340000, 46350000)) +
+  # alpha region 
+  #scale_x_continuous(limits = c(45000000, 47000000)) +
+  # Region 1 (DCO region 1)
+  #scale_x_continuous(limits = c(45390000, 45470000)) +
+  # Region 2 (DCO region 2)
+  #scale_x_continuous(limits = c(45710000, 45760000)) +
+  #coord_cartesian(ylim = c(-0.15, 0.15))
+  scale_y_continuous(limits = c(-0.15, 0.15)) 
+  #facet_wrap(~genotype, ncol = 1)
+
+#ggsave(filename = "~/Documents/figures/SNPRelate plots/all_sample_PCA_ALPHA.jpg", plot = pca, width = 11, height = 8.5)
+
+
+
+```
+
+```{r plotting each of the genotypes seperately}
+library(ggplot2)
+library(dplyr)
+library(ggnewscale)
+
+data <- data %>%
+  filter(!is.na(complex_genotype)) %>%
+  filter(!(complex_genotype == 'complex_genotype_TBD')) %>%
+  mutate(complex_genotype = case_when(
+    complex_genotype == "H1DD/H2" ~ "H1D/H2",
+    complex_genotype == "H1DD/H2D" ~ "H1D/H2D",
+    TRUE ~ complex_genotype
+  ))
+
+# Function to create a plot for a specific genotype
+create_plot <- function(genotype_value) {
+  # Define custom color palette
+  custom_colors <- c("#00496F", "#C4C856", "#ED9106", "#E25B16")
+  
+  pca <- ggplot(data = data %>% filter(genotype == genotype_value)) + 
+    geom_line(aes(x = as.numeric(variable), y = value, group = sample_id, color = complex_genotype)) +
+    scale_color_manual(values = custom_colors) + # Use custom color palette without conflict
+    new_scale_color() +
+    geom_segment(aes(x = start, xend = end, y = -0.165, yend = -0.165, color = fracMatch),
+                 data = (read_sds %>% arrange(fracMatch)),
+                 size = 1.2,
+                 alpha = 1,
+                 arrow = arrow(length = unit(0.005, "cm"), type = "closed"),
+                 linejoin = "mitre",
+                 lineend = "butt") +
+    geom_segment(aes(x = start, xend = end, y = -0.175, yend = -0.175),
+                 data = (genes %>% filter(xpos == 2)), size = .5,
+                 arrow = arrow(length = unit(0.01, "cm"), type = "closed"),
+                 linejoin = "mitre",
+                 lineend = "butt") +
+    geom_text(inherit.aes = FALSE, aes(x = start, y = -0.1550, hjust = ifelse(strand == "+", 0, 1), label = name),
+              data = (genes %>% filter(xpos == 2) %>% filter(do_label)),
+              size = 4,
+              angle = 0,
+              vjust = 0,
+              fontface = 'italic') +
+    scale_color_gradient(low = "lightblue", high = "darkblue") + # Gradient for fracMatch
+    labs(x = 'Position on Chromosome 17 (hg38)', y = 'PC1 (8.1 %)') +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    theme_light() +
+    #scale_x_continuous(limits = c(45000000, 47000000)) +
+    
+    # KANSL1
+    #scale_x_continuous(limits = c(45000000, 47000000)) +
+    # MAPT
+    #scale_x_continuous(limits = c(45000000, 47000000)) +
+    scale_y_continuous(limits = c(-0.25, 0.25)) 
+  
+  # Save the plot as a JPG file
+  jpg_filename <- paste0("~/Documents/figures/SNPRelate plots/SNPRelate_sliding_window_PCA_new_alpha", genotype_value, ".jpg")
+  ggsave(jpg_filename, plot = pca, width = 11, height = 8.5, dpi = 300)
+}
+
+# Get unique values of genotype and create plots for each one
+unique_genotypes <- unique(data$genotype)
+
+# Loop through each unique genotype and create a plot
+for (genotype in unique_genotypes) {
+  create_plot(genotype)
+}
+```
+
+```{r determining cross over individuals}
+
+# Function to identify outliers using the IQR method and assign regions
+identify_outliers <- function(df) {
+  df %>%
+    filter(!is.na(value) | !is.na(genotype.x)) %>%  # Remove rows with NA in value or genotype
+    #filter((genotype.x != 'H2H2')) %>%
+    group_by(genotype.x, variable) %>%
+    mutate(
+      Q1 = quantile(value, 0.025, na.rm = TRUE),
+      Q3 = quantile(value, 0.975, na.rm = TRUE),
+      IQR = Q3 - Q1,
+      lower_bound = Q1 - 1.5 * IQR,
+      upper_bound = Q3 + 1.5 * IQR,
+      is_outlier = ifelse(value < lower_bound | value > upper_bound, TRUE, FALSE)
+    ) %>%
+    filter(is_outlier) %>%
+    ungroup() %>%
+    mutate(
+      region = case_when(
+        (variable >= 45400000 & variable <= 45500000) ~ 'region 1',
+        (variable >= 45550000 & variable <= 46300000) ~ 'region 2',
+        TRUE ~ 'other'
+      )
+    ) 
+    #%>%
+    #select(sample_id, variable, value, genotype.x, is_outlier, region)
+}
+
+# Apply the function to identify outliers
+outliers <- identify_outliers(data) 
+
+variable_counts <- outliers %>% count(sample_id) %>% filter(n>2)
+
+#%>% select(sample_id, variable, value, genotype.x, is_outlier, region)
+
+# Plot the data
+ggplot(data = data %>% filter(!(sample_id %in% variable_counts$sample_id))) + 
+  geom_line(aes(x = as.numeric(variable), y = value, group = sample_id, color = genotype.x)) +
+  new_scale_color() +
+  #geom_segment(aes(x = 45268142, xend = 46866377, y = -1.35, yend = -1.35), size = 2, color = 'lightgrey') +
+  geom_segment(aes(x = start, xend = end, y = -1.2, yend = -1.2, color = fracMatch),
+                data = (read_sds %>% arrange(fracMatch)),
+                size = 1.2,
+                alpha = 1,
+                arrow = arrow(length = unit(0.005, "cm"), type = "closed"),
+                linejoin = "mitre",
+                lineend = "butt") +
+  ##plot the lines above the segdups with the genes
+  geom_segment(aes(x=start, xend=end, y=-1.275, yend=-1.275),
+                 data=(genes %>% filter(xpos == 2)),size=.5,
+                 arrow = arrow(length = unit(0.01, "cm"), type="closed"),
+                 linejoin="mitre",
+                 lineend="butt") +
+  geom_text(inherit.aes = FALSE, aes(x=start, y=-1.250, hjust=ifelse(strand=="+",0,1),label=name),
+              data=(genes %>% filter(xpos ==2) %>% filter(do_label)),
+              size=2,
+              angle=0,
+              vjust=0,
+              fontface = 'italic') +
+  scale_color_gradient(low = "yellow", high = "red") +
+  facet_grid(~genotype.x) +
+  labs(x = 'position on chromosome 17 (hg38)', y = 'PC2') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme_light() +
+  scale_x_continuous(limits = c(45000000, 47000000))
+```
+
+```{r process which individuals are H1H1, H1H2, H2H2 - we do NOT have population and superpopulation information for this}
+
+#This dataset has all the information from the SNPRelate run
+ordered_1KG_HGDP_SNPRelate_hg38
+
+#This dataset genotypes 4099 individuals in the new HGDP TGP set and provides H1H1, H1H2, H2H2 information
+metadata_part_2 <- read_delim("~/Documents/datasets/hgdp_sgdp_1kg_summary.txt", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
+
+metadata_part_3 <- read.delim("~/Documents/datasets/metadata/METADATAsubset_4099.tsv")
+
+data <- merge(metadata_part_3, metadata_part_2, by.x = 'sample', by.y = 'sample', all = TRUE)
+
+data <- as.data.frame(data)
+
+data <- as_tibble(data)
+
+data1 <- dplyr::select(data, sample, project_meta.sample_id, hgdp_tgp_meta.Population, hgdp_tgp_meta.Genetic.region, hgdp_tgp_meta.Study.region, hgdp_tgp_meta.Latitude, hgdp_tgp_meta.Longitude, genotype)
+
+final_df <- merge(data1, ordered_1KG_HGDP_SNPRelate_hg38, by.x = 'sample', by.y = 'sample_id')
+
+split_data <- final_df %>% group_by(genotype) %>% group_split()
+
+# Function to extract sample column and write to .txt file
+save_samples_to_txt <- function(df, group_name, index) {
+  sample_data <- df %>% dplyr::select(sample)
+  filename <- paste0(group_name, "_samples_", index, ".txt")
+  write.table(sample_data, file = filename, row.names = FALSE, col.names = FALSE, quote = FALSE)
+}
+
+# Loop through the list of split dataframes and save the sample column to .txt files
+for (i in seq_along(split_data)) {
+  group_name <- unique(split_data[[i]]$group)
+  save_samples_to_txt(split_data[[i]], group_name, i)
+}
+```
+
+```{r line plots}
+# Remove rows with NA values in key columns
+data <- data
+
+identify_outliers <- function(df) {
+  df %>%
+    filter(!is.na(value)) %>%  # Remove rows with NA in value or genotype
+    group_by(genotype, variable) %>%
+    mutate(
+      Q1 = quantile(value, 0.025, na.rm = TRUE),
+      Q3 = quantile(value, 0.975, na.rm = TRUE),
+      IQR = Q3 - Q1,
+      lower_bound = Q1 - 1.5 * IQR,
+      upper_bound = Q3 + 1.5 * IQR,
+      is_outlier = case_when(
+        genotype == 'H1H2' & value < lower_bound ~ TRUE,  # H1H2 as H1H1-like outlier
+        genotype == 'H1H2' & value > upper_bound ~ TRUE,  # H1H2 as H2H2-like outlier
+        value < lower_bound | value > upper_bound ~ TRUE, # General outlier detection for other genotypes
+        TRUE ~ FALSE
+      )
+    ) %>%
+    ungroup() 
+}
+
+# Apply the function to identify outliers
+outliers <- identify_outliers(data)
+
+outliers <- outliers %>% 
+  group_by(sample_id) %>% 
+  mutate(outliers_count = sum(is_outlier)) %>%
+  ungroup()
+
+outliers <- outliers %>%
+  arrange(genotype, desc(is_outlier))
+
+# Create a named vector for the colors
+color_mapping <- c(
+  'H1H1 (is_outlier)' = '#ed8b00',
+  'H1H1 (!is_outlier)' = '#00496f',
+  'H1H2 (is_outlier)' = '#dd4124',
+  'H1H2 (!is_outlier)' = '#ed8b00',
+  'H2H2 (is_outlier)' = '#ed8b00',
+  'H2H2 (!is_outlier)' = '#dd4124',
+  'Other' = 'black'
+)
+
+# Add a column for the legend key
+outliers <- outliers %>%
+  mutate(legend_key = case_when(
+    is_outlier & genotype== 'H1H1' ~ 'H1H1 (is_outlier)',
+    !is_outlier & genotype == 'H1H1' ~ 'H1H1 (!is_outlier)',
+    is_outlier & genotype == 'H1H2' & value < lower_bound ~ 'H1H1 (is_outlier)',  # H1H2 like H1H1
+    is_outlier & genotype == 'H1H2' & value > upper_bound ~ 'H2H2 (is_outlier)',  # H1H2 like H2H2
+    !is_outlier & genotype== 'H1H2' ~ 'H1H2 (!is_outlier)',
+    is_outlier & genotype == 'H2H2' ~ 'H2H2 (is_outlier)',
+    !is_outlier & genotype == 'H2H2' ~ 'H2H2 (!is_outlier)',
+    TRUE ~ 'Other'  # Default label if no condition matches
+  ))
+
+# Plot
+ggplot(data = (outliers %>% filter(outliers_count > 0))) +
+  geom_tile(aes(x = variable, y = factor(sample_id, levels = unique(sample_id)), fill = legend_key)) +
+  scale_fill_manual(values = color_mapping) +
+  theme_light() +
+  geom_rect(aes(xmin = 45430000, xmax = 45470000, ymin = -Inf, ymax = Inf), fill = NA, color = 'black', alpha = 0.05, size = 0.005) +
+  geom_rect(aes(xmin = 45710000, xmax = 45760000, ymin = -Inf, ymax = Inf), fill = NA, color = 'black', alpha = 0.05, size = 0.005) +
+  geom_rect(aes(xmin = 46095000, xmax = 46123000, ymin = -Inf, ymax = Inf), fill = NA, color = 'black', alpha = 0.05, size = 0.005) +
+  geom_rect(aes(xmin = 46143000, xmax = 46238000, ymin = -Inf, ymax = Inf), fill = NA, color = 'black', alpha = 0.05, size = 0.005) +
+  labs(x = 'position on chromosome 17 (hg38)', y = 'PC2') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme_light() +
+  scale_x_continuous(limits = c(45000000, 47000000)) +
+  labs(x = 'position on chromosome 17 (hg38)', y = 'sample ID', fill = 'Genotype and Outlier Status')
+```
+
+```{r}
+library(tidyverse)
+library(ComplexHeatmap)
+library(fastcluster)
+
+ht_opt$fast_hclust = TRUE
+
+set.seed(804)
+sam <- read_csv(file = '~/Documents/datasets/SNPRelate/DCO_plotting_as_tiles_NEW.csv')
+
+final_summary_dataframe <- read_csv(file = '~/Documents/datasets/metadata/final_summary_dataframe.txt')
+
+final_metadata_frame <- read.delim("~/Documents/datasets/metadata/METADATAsubset_4099.tsv")
+
+sam <- merge(sam, final_metadata_frame, by.x='sample_id', by.y = 'sample')
+
+sam <- sam
+  #filter(variable >= 45430000 & variable <= 45470000)
+  #filter(variable >= 45340000 & variable <= 46340000)
+
+# Create a named vector for the colors
+color_mapping <- c(
+  'H1H1 (is_outlier)' = '#ed8b00',
+  'H1H1 (!is_outlier)' = '#00496f',
+  'H1H2 (is_outlier)' = '#dd4124',
+  'H1H2 (!is_outlier)' = '#ed8b00',
+  'H2H2 (is_outlier)' = '#ed8b00',
+  'H2H2 (!is_outlier)' = '#dd4124',
+  'Other' = 'black'
+)
+
+
+# Plot
+sam %>%
+  filter(outliers_count > 3) 
+
+h2_remap <- c(
+  'H1H1 (is_outlier)' = 1,
+  'H1H1 (!is_outlier)' = 0,
+  'H1H2 (is_outlier like H1H1)' = 1,
+  'H1H2 (is_outlier like H2H2)' = 3,
+  'H1H2 (!is_outlier)' = 2,
+  'H2H2 (is_outlier)' = 3,
+  'H2H2 (!is_outlier)' = 2,
+  'Other' = NA
+)
+
+
+sam.filt <- sam %>%
+  dplyr::mutate(
+    h2_remap = case_when(
+      genotype == 'H1H1' & is_outlier ~ '4',  # Assign new number for H1H1 (is_outlier)
+      genotype == 'H1H1' & !is_outlier ~ '1',
+      genotype == 'H1H2' & !is_outlier ~ '2',
+      genotype == 'H1H2' & is_outlier & value > upper_bound ~ '3',  # H1H2 outlier above the range
+      genotype == 'H1H2' & is_outlier & value < lower_bound ~ '0',  # H1H2 outlier below the range
+      genotype == 'H2H2' & is_outlier ~ '3',
+      genotype == 'H2H2' & !is_outlier ~ '2',
+      TRUE ~ NA_character_  # Handle any other cases
+    )
+  ) %>%
+  filter(outliers_count > 3)
+
+mat <- sam.filt %>% 
+  dplyr::select(sample_id, s=variable, h2_remap) %>%
+  distinct %>% 
+  mutate(s = factor(s, levels=s %>% unique %>% sort ) %>% as.numeric) %>% 
+  arrange(s) %>% 
+  pivot_wider(id_cols=sample_id, names_from = s, values_from = h2_remap) %>% 
+  column_to_rownames("sample_id") %>% 
+  as.matrix()
+
+# meta.superpop <- sam.filt %>%
+#   dplyr::select(sample_id, hgdp_tgp_meta.Genetic.region) %>%
+#   distinct %>%
+#   rename(superpop = hgdp_tgp_meta.Genetic.region) %>%
+#   dplyr::mutate(superpop = ifelse(superpop %in% c("MID", "CSA"), "SAS", superpop)) %>%
+#   column_to_rownames("sample_id") %>%
+#   as.matrix()
+# 
+# meta.hap <- sam.filt %>%
+#   dplyr::select(sample_id, genotype.x) %>%
+#   distinct %>%
+#   rename(genotype = genotype.x) %>%
+#   column_to_rownames("sample_id") %>%
+#   as.matrix()
+
+colorscheme <- c(
+  '4' = '#ed8b00',  # New number for H1H1 (is_outlier)
+  '1' = '#00496f',  # Color for H1H1 (!is_outlier)
+  '2' = '#ed8b00',  # Color for H1H2 (!is_outlier)
+  '3' = '#dd4124',  # Color for H1H2 (is_outlier like H2H2) and H2H2 (is_outlier)
+  '0' = '#00496f'   # Color for H1H2 (is_outlier like H1H1 below the range)
+)
+
+# Generate column labels starting from 45,000,000 with increments of 10,000
+column_labels <- seq(45000000, by = 10000, length.out = ncol(mat))
+
+# Label every 5th point
+label_positions <- seq(1, ncol(mat), by = 5)
+column_labels <- ifelse(1:ncol(mat) %in% label_positions, column_labels, "")
+
+ht <- Heatmap(
+  mat,
+  show_row_names = FALSE,
+  show_column_names = TRUE,
+  col = colorscheme,
+  row_km = 5,
+  column_order = order(as.numeric(colnames(mat))),
+  column_labels = column_labels,
+  column_names_rot = 90,  # Set the text rotation to 90 degrees
+  column_dend_height = unit(4, "cm"),
+  row_dend_width = unit(4, "cm"),
+  use_raster = FALSE  # Set to TRUE if the matrix is large and you want to use rasterization
+) 
+
+# Optional: Save the plot
+# pdf("~/Documents/figures/SNPRelate_plots/painting_DCO_all_individuals.pdf", width = 12, height = 6)
+ht
+# dev.off()
+```
+
+```{r FINAL WORKING sliding window PCA painted plot}
+library(ComplexHeatmap)
+
+ht_opt$fast_hclust = TRUE  # Enable fast hierarchical clustering
+
+sam <- read_csv(file = '~/Documents/datasets/SNPRelate/DCO_plotting_as_tiles_NEW.csv')
+
+final_summary_dataframe <- read_csv(file = '~/Documents/datasets/metadata/final_summary_dataframe.txt')
+
+final_metadata_frame <- read.delim("~/Documents/datasets/metadata/METADATAsubset_4099.tsv")
+
+sam <- merge(sam, final_metadata_frame, by.x = 'sample_id', by.y = 'sample')
+
+# h2_remap consistent with the color mapping
+h2_remap <- c(
+  'H1H1 (is_outlier)' = '4',  # New number for H1H1 (is_outlier)
+  'H1H1 (!is_outlier)' = '1',
+  'H1H2 (is_outlier like H1H1)' = '0',  # H1H2 outlier below the range
+  'H1H2 (is_outlier like H2H2)' = '3',  # H1H2 outlier above the range
+  'H1H2 (!is_outlier)' = '2',
+  'H2H2 (is_outlier)' = '3',  # H2H2 outliers will look like H1H2 outliers
+  'H2H2 (!is_outlier)' = '5',  # New code for H2H2 without outliers
+  'Other' = NA_character_
+)
+
+# Add h2_remap based on color mapping
+sam.filt <- sam %>%
+  dplyr::mutate(
+    legend_key = case_when(
+      genotype == 'H1H1' & is_outlier ~ 'H1H1 (is_outlier)',
+      genotype == 'H1H1' & !is_outlier ~ 'H1H1 (!is_outlier)',
+      genotype == 'H1H2' & is_outlier & value < lower_bound ~ 'H1H2 (is_outlier like H1H1)',  # Below the range
+      genotype == 'H1H2' & is_outlier & value > upper_bound ~ 'H1H2 (is_outlier like H2H2)',  # Above the range
+      genotype == 'H1H2' & !is_outlier ~ 'H1H2 (!is_outlier)',
+      genotype == 'H2H2' & is_outlier ~ 'H2H2 (is_outlier)',
+      genotype == 'H2H2' & !is_outlier ~ 'H2H2 (!is_outlier)',
+      TRUE ~ 'Other'  # Handle any other cases
+    ),
+    h2_remap = sapply(legend_key, function(x){ h2_remap[x] })
+  ) %>%
+  filter(outliers_count >= 4) #0 is all samples with just one outlier
+
+tgp_hgdp_sgdp <- read_csv("~/Documents/datasets/metadata/supplementary_table_1_FINAL.csv")
+
+sam.filt_merged <- merge(sam.filt, tgp_hgdp_sgdp, by.x = 'sample_id', by.y = 'sample')
+
+# Create annotations for population and superpopulation
+pop_annotation <- sam.filt_merged %>%
+  dplyr::select(sample_id, pop, superpop) %>%
+  distinct() %>%
+  column_to_rownames("sample_id")
+
+# Create annotation objects for population and superpopulation
+# annotation <- rowAnnotation(
+#   Population = pop_annotation$pop,
+#   Superpopulation = pop_annotation$superpop,
+#   col = list(
+#     Population = structure(1:length(unique(pop_annotation$pop)), names = unique(pop_annotation$pop)),
+#     Superpopulation = structure(1:length(unique(pop_annotation$superpop)), names = unique(pop_annotation$superpop))
+#   ),
+#   show_annotation_name = TRUE
+# )
+# 
+# # Define the five custom colors for superpopulations
+# superpop_colors <- c(
+#   "AFR" = "#c4c856",  
+#   "EUR" = "#a45a52",  
+#   "CSA" = "#005f73",  
+#   "AMR" = "#f4a261",  
+#   "EAS" = "black",
+#   "SAS" = "#8d3b72"   
+# )
+# 
+# # Create annotation objects for population and superpopulation
+# annotation <- rowAnnotation(
+#   Superpopulation = pop_annotation$superpop,
+#   col = list(
+#     Superpopulation = superpop_colors
+#   ),
+#   show_annotation_name = TRUE
+# )
+
+# Ensure that 'row_clusters' is computed using hierarchical clustering
+row_clusters <- hclust(dist(mat))  # Example using hierarchical clustering
+
+# Cut into 5 clusters
+row_split_vector <- cutree(row_clusters, k = 5)
+
+# Adjust the column labels by dividing by 10,000 and replace NA with an empty string
+column_labels <- as.numeric(column_labels) * 10000
+column_labels[is.na(column_labels)] <- ""  # Replace NA values with an empty string
+
+# Create the heatmap with population and superpopulation annotation
+ht <- Heatmap(
+  mat,
+  name = "Genotype Heatmap",
+  show_row_names = FALSE,  # Hide row names for clarity
+  show_column_names = TRUE,  # Show column names
+  col = colorscheme,  # Apply the defined color scheme
+  cluster_rows = row_clusters,  # Apply the precomputed row clustering
+  #row_dend_side = "left",  # Position the dendrogram on the left
+  #row_dend_width = unit(4, "cm"),  # Display the dendrogram for row clustering
+  cluster_columns = FALSE,  # Disable column clustering
+  column_labels = column_labels,  # Apply the column labels
+  column_names_rot = 90,  # Rotate column names for better readability
+  use_raster = FALSE,  # Set to TRUE if the matrix is large and you want to use rasterization
+  row_split = 5,  # Split the rows into 5 clusters
+  gap = unit(0.5, "mm")  # Add a gap between clusters
+  #right_annotation = annotation  # Add the population and superpopulation annotations on the right
+)
+
+# Draw the heatmap with annotations
+draw(ht)
+
+# Draw the heatmap first (this creates a grob)
+ht_grob <- grid.grabExpr(draw(ht))
+
+# Combine the grob with ggplot using gridExtra
+grid.arrange(ht_grob, gene_plot, ncol = 1, heights = c(5, 2.5))
+
+
+pdf("~/Documents/figures/SNPRelate plots/painting_DCO_all_greater_than_5.pdf", width = 18, height = 10)
+grid.arrange(ht_grob, gene_plot, ncol = 1, heights = c(5, 2.5))
+dev.off()
+
+
+# Optional: Save the plot
+pdf("~/Documents/figures/SNPRelate plots/painting_DCO_all_greater_than_5.pdf", width = 18, height = 8) 
+draw(ht)
+dev.off()
+```
+
+```{r}
+# Create the heatmap (same as before)
+ht <- Heatmap(
+  mat,
+  name = "Genotype Heatmap",
+  show_row_names = FALSE,
+  show_column_names = TRUE,
+  col = colorscheme,
+  cluster_rows = row_clusters,
+  #row_dend_side = "left",
+  #row_dend_width = unit(4, "cm"),
+  cluster_columns = FALSE,
+  column_labels = column_labels,
+  column_names_rot = 90,
+  use_raster = FALSE,
+  row_split = 5,
+  gap = unit(0.5, "mm")
+  #right_annotation = annotation
+)
+
+# Draw heatmap and capture it as a grob (graphical object)
+ht_grob <- grid.grabExpr(draw(ht))
+
+# Create the line plot using ggplot2
+x <- seq_along(column_labels)  # X-axis matching the heatmap columns
+y <- 5  # Replace this with your actual values
+
+line_plot <- ggplot(data.frame(x, y), aes(x, y)) +
+  geom_line() +
+  theme_minimal() +
+  labs(x = "Columns from heatmap", y = "Some values")
+
+# Load the necessary library for stacking plots
+library(gridExtra)
+
+# Arrange heatmap and line plot vertically with aligned x-axes
+pdf("~/Documents/figures/SNPRelate plots/combined_plot_aligned_xaxis.pdf", width = 12, height = 8)
+
+# Combine the heatmap (as grob) and the line plot
+grid.arrange(ht_grob, line_plot, ncol = 1, heights = c(2, 1))  # Adjust heights as needed
+
+dev.off()
+```
+
+```{r}
+sample_prop <- sam.filt_merged %>% distinct(sample_id, pop, superpop, genotype.x, complex_genotype.x)
+
+# Define the values
+dco <- 112
+non_dco <- 3210
+total <- dco + non_dco
+
+# Calculate the proportions
+proportion_dco <- dco / total
+proportion_non_dco <- non_dco / total
+
+# Create a data frame
+df <- data.frame(
+  category = c("dco", "non_dco"),
+  value = c(proportion_dco, proportion_non_dco)
+)
+
+# Create a bar chart
+library(ggplot2)
+ggplot(df, aes(x = category, y = value, fill = category)) +
+  geom_bar(stat = "identity") +
+  #labs(title = "Bar Chart of 112/3210", x = "Category", y = "Value") +
+  scale_fill_manual(values = c("blue", "lightgray")) +
+  theme_minimal()
+
+# Calculate the proportions by grouping by 'superpop' and counting occurrences
+superpop_prop <- sample_prop %>%
+  group_by(superpop) %>%
+  summarise(count = n()) %>%
+  mutate(proportion = count / sum(count))
+
+# Plot the proportions using ggplot2
+ggplot(superpop_prop, aes(x = superpop, y = proportion, fill = superpop)) +
+  geom_bar(stat = "identity") +
+  labs(x = "superpop",
+       y = "proportion") +
+  scale_y_continuous() + # This will convert the y-axis to percentage
+  theme_minimal()
+
+# Calculate the proportions by grouping by 'superpop' and counting occurrences
+superpop_prop <- sample_prop %>%
+  group_by(superpop) %>%
+  filter(superpop == 'AFR') %>%
+  group_by(pop) %>%
+  summarise(count = n()) %>%
+  mutate(proportion = count / sum(count))
+
+# Plot the proportions using ggplot2
+ggplot(superpop_prop, aes(x = pop, y = proportion, fill = pop)) +
+  geom_bar(stat = "identity") +
+  labs(x = "pop",
+       y = "proportion") +
+  scale_y_continuous() + # This will convert the y-axis to percentage
+  theme_minimal()
+
+```
+
+```{r PRDM9 plot}
+PRDM9table_JASPAR_Transcription_Factors <- read_delim("~/Downloads/PRDM9table_JASPAR_Transcription_Factors.gz", 
+                                                      delim = "\t", escape_double = FALSE, 
+                                                      trim_ws = TRUE)
+
+PRDM9table_JASPAR_Transcription_Factors_SUBSET <- PRDM9table_JASPAR_Transcription_Factors %>% 
+  filter(TFName == 'PRDM9') %>%
+  filter(score >= 500) %>%
+  filter(chromStart >= 45000000 & chromStart <= 47000000) %>%
+  filter(chromEnd >= 45000000 & chromEnd <= 47000000)
+
+
+# ggplot(PRDM9table_JASPAR_Transcription_Factors_SUBSET, aes(x=chromStart)) +
+#   geom_histogram(binwidth = 10000) +
+#   xlab("chr17 position (hg38)") +
+#   ylab("# of unique PRDM9 binding sites") +
+#   theme_light()
+
+# Filter the dataframe to include only rows where is_outlier is FALSE
+filtered_sam <- sam[sam$is_outlier == TRUE, ] 
+
+# Count the occurrences of each value in the 'variable' column
+value_counts <- table(filtered_sam$variable, filtered_sam$genotype.x)
+
+# Convert the table to a dataframe
+df_counts <- as.data.frame(value_counts)
+
+
+# Calculate the total counts per site
+df_counts <- df_counts %>%
+  group_by(Var1) %>%
+  mutate(Total = sum(Freq))
+
+# Calculate the proportions
+df_counts <- df_counts %>%
+  mutate(Proportion = Freq / Total)
+
+# Create a sequence of all possible values for Var1
+all_var1 <- data.frame(Var1 = seq(45000000, 47000000, by = 10000))
+
+# Merge the sequence with the existing dataframe to fill in the missing values
+merged_df <- merge(all_var1, df_counts, by = "Var1", all = TRUE) %>%
+  mutate(
+    Var2 = ifelse(is.na(Var2), NA, Var2),
+    Freq = ifelse(is.na(Freq), 0, Freq),
+    Total = ifelse(is.na(Total), 0, Total),
+    Proportion = ifelse(is.na(Proportion), 0, Proportion)
+  )
+
+# Define breaks for y-axis labels (every 50th label)
+x_breaks <- seq(45000000, 47000000, by = 50000)
+
+#Plot the histogram using ggplot2
+ggplot(merged_df, aes(x = Var1, y = Freq, fill = as.character(Var2))) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(title = "Count and Proportion of Genotypes per Site",
+       x = "Site",
+       y = "Count",
+       fill = "Genotype") +
+  theme_light() +
+  #scale_x_continuous(breaks = x_breaks) +
+  theme(axis.text.x = element_text(angle = 0, hjust = 1))
+```
+
+```{r}
+PRDM9table_JASPAR_Transcription_Factors <- read_delim("~/Downloads/PRDM9table_JASPAR_Transcription_Factors.gz", 
+                                                      delim = "\t", escape_double = FALSE, 
+                                                      trim_ws = TRUE)
+
+
+# Filter the data and create the new column
+PRDM9table_JASPAR_Transcription_Factors_SUBSET <- PRDM9table_JASPAR_Transcription_Factors %>%
+  filter(TFName == 'PRDM9') %>%
+  filter(score >= 500) %>%
+  mutate(locus_status = ifelse(chromStart >= 45000000 & chromStart <= 47000000 & chromEnd >= 45000000 & chromEnd <= 47000000, "recomb_region", "outside_recomb_region"))
+
+# Plot the histogram
+ggplot(PRDM9table_JASPAR_Transcription_Factors_SUBSET, aes(x = chromStart, fill = locus_status)) +
+  geom_histogram(binwidth = 10000, color = "black", alpha = 0.75) +
+  theme_minimal() +
+  #geom_density(aes(y = ..density..), color = "green", size = 1) +
+  scale_fill_manual(values = c("recomb_region" = "blue", "outside_recomb_region" = "red")) +
+  labs(title = "Distribution of PRDM9 Transcription Factors",
+       x = "Chromosome Start Position",
+       y = "Count",
+       fill = "Region")
+```
+
+```{r}
+library(ggplot2)
+library(patchwork)
+
+# Define the custom color palette
+custom_colors <- c("H1H1" = "#00496f", "H1H2" = "#ed8b00", "H2H2" = "#dd4124")
+
+# Modify the second dataset to replace 1 with H1H1 and 2 with H1H2
+merged_df$Var2 <- factor(merged_df$Var2, levels = c(1, 2, 3), labels = c("H1H1", "H1H2", "H2H2"))
+
+# Combine the two plots
+combined_plot <- ggplot() +
+  geom_histogram(data = PRDM9table_JASPAR_Transcription_Factors_SUBSET, aes(x = chromStart), binwidth = 10000, fill = "darkgrey") +
+  geom_bar(data = merged_df, aes(x = Var1, y = -Freq, fill = Var2), stat = "identity", position = "stack", alpha = 1) +
+  scale_fill_manual(values = custom_colors) +
+  labs(fill = "Genotype") +  # Set the legend title
+  xlab("chr17 position (hg38)") +
+  ylab("Count") +
+  theme_light() +
+  scale_y_continuous(sec.axis = dup_axis(name = "# of unique PRDM9 binding sites")) +
+  geom_segment(aes(x=start, xend=end, y=0, yend=0),
+                 data=(genes %>% filter(xpos == 2)),size=.5,
+                 arrow = arrow(length = unit(0.01, "cm"), type="closed"),
+                 linejoin="mitre",
+                 lineend="butt") +
+  geom_text(inherit.aes = FALSE, aes(x=start, y=0.5, hjust=ifelse(strand=="+",0,1),label=name),
+              data=(genes %>% filter(xpos ==2) %>% filter(do_label)),
+              size=3,
+              angle=0,
+              vjust=0,
+              fontface = 'italic') +
+  scale_color_gradient(low = "yellow", high = "red") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme_light() +
+  scale_x_continuous(limits = c(45000000, 47000000))
+
+pdf("~/Documents/figures/SNPRelate plots/PRDM9_sites_for_region.pdf", width = 12, height = 6)
+combined_plot
+dev.off()
+```
+
+```{r determining PRDM9 clusters A-B-C-D-E-etc}
+library(dplyr)
+library(data.table)
+library(ggplot2)
+
+# Filter out rows where is_outlier is TRUE
+filtered_data <- sam %>% filter(is_outlier == TRUE)
+
+# Identify consecutive groups
+filtered_data <- filtered_data %>%
+  arrange(sample_id, variable) %>%
+  group_by(sample_id, complex_genotype, hgdp_tgp_meta.Population, hgdp_tgp_meta.Genetic.region) %>%
+  dplyr::mutate(group = cumsum(c(1, diff(variable) != 10000)))
+
+# Summarize groups to find start and end points
+result <- filtered_data %>%
+  dplyr::group_by(sample_id, group, complex_genotype, hgdp_tgp_meta.Population, hgdp_tgp_meta.Genetic.region) %>%
+  filter(n() >= 1) %>%
+  summarise(
+    start = min(variable),
+    end = max(variable),
+    block_length = max(variable) - min(variable) + 10000
+  ) %>%
+  ungroup() %>%
+  dplyr::select(sample_id, start, end, block_length, complex_genotype, hgdp_tgp_meta.Population, hgdp_tgp_meta.Genetic.region)
+
+final_summary_dataframe <- read_csv("~/Documents/datasets/metadata/final_summary_dataframe.txt")
+
+result_merged <- merge(final_summary_dataframe, result, by.x = 'sample', by.y = 'sample_id')
+
+result_merged <- result_merged %>% 
+  mutate(
+    hap1 = ifelse(is.na(complex_genotype.x), "H1*", hap1),
+    hap2 = ifelse(is.na(complex_genotype.x), "H2*", hap2)
+  )
+
+summary_result <- result_merged %>%
+  group_by(start, end, block_length) %>%
+  summarise(count = n(),
+            H1H1_count = sum(genotype == "H1H1"),
+            H1H2_count = sum(genotype == "H1H2"),
+            H2H2_count = sum(genotype == "H2H2"), 
+            H1_total = sum(hap1 == "H1") + sum(hap2 == "H1"),
+            H2_total = sum(hap1 == "H2") + sum(hap2 == "H2"),
+            H1_star_total = sum(hap1 == "H1*") + sum(hap2 == "H1*"),
+            H2_star_total = sum(hap1 == "H2*") + sum(hap2 == "H2*"),
+            # Calculate total haplotype counts directly
+            H1D_total = sum(hap1 == "H1D") + sum(hap2 == "H1D"),
+            H2D_total = sum(hap1 == "H2D") + sum(hap2 == "H2D")
+            ) %>%
+  ungroup() %>%
+  filter(!(block_length == 10000 & count == 1)) %>%
+  filter(start >= 45340000 & start <= 46340000) %>%
+  filter(end >= 45340000 & end <= 46340000)
+
+# Add a row index to summary_result
+summary_result <- summary_result %>%
+  mutate(row_index = row_number())
+
+# Function to create a pie chart for a given block
+create_pie_chart_grob <- function(data, block_name) {
+  pie_data <- data %>%
+    dplyr::select(H1_total, H2_total, H1_star_total, H2_star_total, H1D_total, H2D_total) %>%
+    pivot_longer(cols = c(H1_total, H2_total, H1_star_total, H2_star_total, H1D_total, H2D_total), names_to = "haplotype", values_to = "count")
+  
+  # Define the colors for each haplotype
+  haplotype_colors <- c(
+    H1_total = "#00496F",
+    H2_total = "#ED9106",
+    H1_star_total = "#0A7492",
+    H2_star_total = "#E25B16",
+    H1D_total = "#C4C856",
+    H2D_total = "#dd4124"
+  )
+  
+  #View(pie_data)
+  
+  pie_chart <- ggplot(pie_data, aes(x = "", y = count, fill = haplotype)) +
+    geom_bar(stat = "identity", width = 10) +
+    coord_polar("y") +
+    theme_void() +
+    theme(legend.position = "none") +
+    scale_fill_manual(values = haplotype_colors)
+  
+  ggplotGrob(pie_chart)
+}
+
+# Create a list of grobs for each block
+pie_grobs <- lapply(1:nrow(summary_result), function(i) {
+  create_pie_chart_grob(summary_result[i,], paste0("Block ", i))
+})
+
+combined_plot <- ggplot() +
+  # Histogram layer
+  geom_histogram(data = PRDM9table_JASPAR_Transcription_Factors_SUBSET, aes(x = chromStart), binwidth = 10000, fill = "darkgrey", alpha = 0.75) +
+  
+  # Labels and scales
+  labs(fill = "Genotype") +
+  xlab("chr17 position (hg38)") +
+  ylab("Count") +
+  scale_y_continuous(sec.axis = dup_axis(name = "# of unique PRDM9 binding sites")) +
+  
+  # Gene segments and text
+  geom_segment(data = genes %>% filter(xpos == 2), aes(x = start, xend = end, y = -0.2, yend = -0.2), size = .5, arrow = arrow(length = unit(0.01, "cm"), type = "closed"), linejoin = "mitre", lineend = "butt") +
+  geom_text(data = genes %>% filter(xpos == 2) %>% filter(do_label), aes(x = start, y = 0, hjust = ifelse(strand == "+", 0, 1), label = name), size = 2, angle = 0, vjust = 0, fontface = 'italic') +
+
+  # Read_sds segments
+  geom_segment(data = read_sds %>% arrange(fracMatch), aes(x = start, xend = end, y = -0.60, yend = -0.60, color = fracMatch), size = 1.2, alpha = 1, arrow = arrow(length = unit(0.005, "cm"), type = "closed"), linejoin = "mitre", lineend = "butt") +
+  
+  # Summary_result rectangles and text
+  geom_rect(data = summary_result, aes(xmin = start, xmax = end+10000, ymin = row_index - 0.5, ymax = row_index + 0.5, fill = count, alpha = 0.5), color = "black") +
+  geom_text(data = summary_result, aes(x = end + 13000, y = row_index, label = paste0("(", count, ")")), hjust = 0, size = 1.5) +
+  
+  # Color scales
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  scale_color_gradient(low = "lightblue", high = "darkblue") +
+  
+  # Customizing theme and axis
+  theme_light() +
+  theme(axis.text.x = element_text(angle = 0, hjust = 1)) +
+  scale_x_continuous(limits = c(45340000, 46340000)) +
+  scale_y_continuous(limits = c(-1, 52))
+
+# Adding pie charts as annotations
+for (i in 1:nrow(summary_result)) {
+  combined_plot <- combined_plot +
+    annotation_custom(pie_grobs[[i]], xmin = summary_result$start[i], xmax = summary_result$end[i] + 10000, ymin = summary_result$row_index[i] - 0.8, ymax = summary_result$row_index[i] + 0.8)
+}
+
+#pdf("~/Documents/figures/SNPRelate plots/PRDM9_sites_for_summarized_region_with_pies_temp.pdf", width = 12, height = 6)
+combined_plot
+#dev.off()
+```
+
+```{r PCA plot for PC1 and PC2}
+### MAPT: chr17:45,894,554-46,028,334
+### KANSL1 chr17:46,029,916-46,193,429
+
+#PC1 <- data %>% filter(variable > 45894554 & variable < 46193429)
+
+#PC1 <- data %>% filter(variable > 46100000 & variable < 46120000)
+
+#PC2 <- data %>% filter(variable > 46100000 & variable < 46120000)
+
+PC1_2 <- merge(PC1, PC2, by = 'sample_id') %>% filter(!is.na(genotype.x.x))
+
+# Create a color mapping for genotype.x
+color_mapping <- c('H1H1' = '#00496f', 'H1H2' = '#ed8b00', 'H2H2' = '#dd4124', 'NA' = 'grey')
+
+pca_plot <- ggplot(data = PC1_2) +
+  geom_point(aes(x = value.x, y = value.y, color = genotype.x.x)) +
+  scale_color_manual(values = color_mapping) +
+  theme_light() +
+  labs(x = 'PC1 (8.1%)', y = 'PC2 (1.96%)')
+
+pdf("~/Documents/figures/SNPRelate plots/PCA_plot_hgdp_sgdp_tgp.pdf", width = 4, height = 4)
+pca_plot
+dev.off()
+```
+
+```{r}
+library(tidyverse)
+
+sam <- read_csv(file = '~/Documents/datasets/SNPRelate/DCO_plotting_as_tiles_NEW.csv')
+
+final_summary_dataframe <- read_csv(file = '~/Documents/datasets/metadata/final_summary_dataframe.txt')
+
+final_metadata_frame <- read.delim("~/Documents/datasets/metadata/METADATAsubset_4099.tsv")
+
+sam <- merge(sam, final_metadata_frame, by.x='sample_id', by.y = 'sample')
+
+sam.filt <- sam %>%
+  dplyr::mutate(
+    h2_remap = case_when(
+      genotype == 'H1H1' & is_outlier ~ '4',  # Assign new number for H1H1 (is_outlier)
+      genotype == 'H1H1' & !is_outlier ~ '1',
+      genotype == 'H1H2' & !is_outlier ~ '2',
+      genotype == 'H1H2' & is_outlier & value > upper_bound ~ '3',  # H1H2 outlier above the range
+      genotype == 'H1H2' & is_outlier & value < lower_bound ~ '0',  # H1H2 outlier below the range
+      genotype == 'H2H2' & is_outlier ~ '3',
+      genotype == 'H2H2' & !is_outlier ~ '2',
+      TRUE ~ NA_character_  # Handle any other cases
+    )
+  ) %>%
+  filter(outliers_count > 1)
+
+mat <- sam.filt %>% 
+  dplyr::select(sample_id, s=variable, h2_remap) %>%
+  distinct %>% 
+  mutate(s = factor(s, levels=s %>% unique %>% sort ) %>% as.numeric) %>% 
+  arrange(s) %>% 
+  pivot_wider(id_cols=sample_id, names_from = s, values_from = h2_remap) %>% 
+  column_to_rownames("sample_id") %>% 
+  as.matrix()
+
+
+# Reshape to wide matrix format for clustering
+mat_for_clustering <- sam.filt %>%
+  dplyr::select(sample_id, variable, h2_remap) %>%
+  filter(!is.na(h2_remap)) %>%
+  pivot_wider(names_from = variable, values_from = h2_remap) %>%
+  column_to_rownames("sample_id") %>%
+  mutate_all(~as.numeric(as.character(.))) %>%
+  as.matrix()
+
+# Cluster samples using hierarchical clustering
+row_clusters <- hclust(dist(mat_for_clustering, method = "euclidean"))
+
+# Get the row order
+ordered_sample_ids <- row_clusters$labels[row_clusters$order]
+
+df_long <- sam.filt %>%
+  dplyr::select(sample_id, variable, h2_remap) %>%
+  filter(!is.na(h2_remap)) %>%
+  mutate(
+    variable = as.numeric(variable),
+    sample_id = factor(sample_id, levels = rev(ordered_sample_ids)),  # Order by clustering
+    h2_remap = factor(h2_remap, levels = names(colorscheme))
+  ) %>%
+  filter(variable > 45268142 & variable < 46921463) 
+
+
+#scale_color_manual(values = c("#74677e", "#ebbdc8", "#ac8eab", "#f2cec7")) +
+
+  #scale_color_manual(values = c("#74677e", "#ebbdc8", "#ac8eab", "#f2cec7")) +
+
+colorscheme <- c(
+  '4' = '#ebbdc8',  # New number for H1H1 (is_outlier)
+  '1' = '#74677e',  # Color for H1H1 (!is_outlier)
+  '2' = '#ebbdc8',  # Color for H1H2 (!is_outlier)
+  '3' = '#ac8eab',  # Color for H1H2 (is_outlier like H2H2) and H2H2 (is_outlier)
+  '0' = '#74677e'   # Color for H1H2 (is_outlier like H1H1 below the range)
+)
+
+heatmap_plot <- ggplot(df_long, aes(x = variable, y = sample_id, fill = h2_remap)) +
+  geom_tile(color = NA) +
+  scale_fill_manual(values = colorscheme, na.value = "black", name = "Genotype") +
+  scale_x_continuous(
+    #breaks = seq(45000000, max(df_long$variable), by = 10000),
+    breaks = seq(45270000, max(df_long$variable), by = 10000),
+    labels = function(x) ifelse(x %% 10000 == 0, x / 1e6, "")
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title = element_blank(),
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    panel.grid = element_blank(),
+    legend.position = "right"
+  )
+
+# Load required libraries
+library(dplyr)
+library(tidyverse)
+library(gggenes)
+library(ggplot2)
+
+#fn <- "/Users/samvardhinisridharan/Documents/pgrtk/target/release/ALL_REP_HAPS_NO_MISSASEMBLY.bed"
+fn <- "/Users/samvardhinisridharan/Documents/pgrtk/target/release/hg38_reference.bed"
+
+
+# Read and process BED file
+t <- read.table(fn, header = FALSE, sep = "\t", comment.char = "", 
+                col.names = c("contig", "bstart", "bend", "binf"), skip = 1) %>%
+  mutate(
+    bID = str_split(binf, ":", simplify = TRUE)[, 1],
+    bdunno = str_split(binf, ":", simplify = TRUE)[, 2],
+    bOrientation = as.numeric(str_split(binf, ":", simplify = TRUE)[, 3]),
+    entryix = str_split(binf, ":", simplify = TRUE)[, 4],
+    exitix = str_split(binf, ":", simplify = TRUE)[, 5]
+  ) %>%
+  filter(contig == "chr17:45275488-46921902")
+
+# Compute segment size and per-bID counts
+t_filtered <- t %>%
+  mutate(size = bend - bstart) %>%
+  group_by(bID) %>%
+  mutate(count = n()) %>%
+  ungroup()
+
+# Define thresholds using IQR method
+size_threshold_low <- quantile(t_filtered$size, 0.25, na.rm = TRUE)
+count_threshold_low <- quantile(t_filtered$count, 0.25, na.rm = TRUE)
+
+# Filter data based on thresholds
+t <- t_filtered %>%
+  filter(size >= size_threshold_low | count > count_threshold_low) %>%
+  group_by(contig) %>%
+  mutate(
+    seg_len = bend - bstart,
+    rel_end = cumsum(seg_len),
+    rel_start = lag(rel_end, default = 0)
+  ) %>%
+  separate(contig, c("sample_id", "sample_hap", "sample_contig"), sep = "#|\\.", remove = FALSE) %>%
+  dplyr::select(-c(sample_hap, sample_contig))
+
+# Generate haplotype structure summaries
+hap_sums <- t %>%
+  mutate(bID_d = paste(bID, ".", bOrientation, sep = "")) %>%
+  group_by(contig) %>%
+  summarize(
+    hap_struc = paste0(bID, collapse = "-"),
+    hap_struc_d = paste0(bID_d, collapse = "-"),
+    .groups = "drop"
+  )
+
+# Merge haplotype structure summaries into main dataset
+t <- inner_join(t, hap_sums, by = "contig")
+
+# Identify haplotype block start positions
+hap_info <- t %>%
+  group_by(contig, sample_id, hap_struc, hap_struc_d) %>%
+  summarize(hap_block_start = min(bstart), .groups = "drop")
+
+# Merge haplotype block start positions
+t <- inner_join(t, hap_info, by = c("contig", "hap_struc", "sample_id", "hap_struc_d")) %>%
+  mutate(
+    rel_start2 = bstart - hap_block_start,
+    rel_end2 = bend - hap_block_start
+  )
+
+# Summarize unique haplotype structures
+unique_structures <- hap_sums %>%
+  group_by(hap_struc_d) %>%
+  summarise(n = n(), .groups = 'drop')
+
+# Filter representative haplotypes
+t_unique <- t %>%
+  distinct(contig, rel_start2, rel_end2, bID, bOrientation, hap_struc_d, sample_id, .keep_all = TRUE) %>%
+  group_by(hap_struc_d) %>%
+  ungroup() %>%
+  left_join(unique_structures, by = "hap_struc_d") %>%
+  arrange(desc(n)) %>%
+  mutate(y_label = paste0("(", n, ")", contig)) %>%
+  mutate(haplotype = str_extract(contig, "(?<=#)[^#]+$")) %>%
+  filter(bID != 9)
+
+# Generate visualization using gggenes
+g <- ggplot(t_unique, aes(y = contig)) +
+  geom_gene_arrow(
+    mapping = aes(
+      xmin = rel_start2,
+      xmax = rel_end2,
+      fill = bID,
+      forward = !bOrientation
+    ),
+    arrowhead_height = unit(4.8, "mm"), 
+    arrowhead_width = unit(4.8, "mm"),
+    arrow_body_height = unit(3.2, "mm"),
+    size = 0.1
+  ) +
+  theme_bw() +
+  labs(y = "")
+
+g <- g + 
+  geom_text(aes(x = rel_start, y = contig, label = n), 
+            hjust = 1, size = 4)
+
+# Display plot
+print(g)
+
+library(dplyr)
+library(readr)
+#library(biomaRt)
+
+# this is for HUMANS
+CDS_all_samples_PGRTK_final <- read_table("~/Downloads/hg38_minimap_cd15.paf",
+                                          col_names = FALSE, col_types = cols(X13 = col_skip(),
+                                                                              X14 = col_skip(), X15 = col_skip(),
+                                                                              X16 = col_skip(), X17 = col_skip(),
+                                                                              X18 = col_skip()))
+
+# Assign column names
+colnames(CDS_all_samples_PGRTK_final) <- c("qname", "qlen", "qstart", "qend", "strand", "tname", "tlen", "tstart", "tend", "nmatch", "alen", "mapq")
+
+# Filter relevant columns
+CDS_all_samples_PGRTK_final_FILTERED <- CDS_all_samples_PGRTK_final %>%
+  dplyr::select(qname, qlen, qstart, qend, strand, tname, tlen, tstart, tend, nmatch, alen, mapq)
+
+# Extract transcript ID from tname
+CDS_all_samples_PGRTK_final_FILTERED <- CDS_all_samples_PGRTK_final_FILTERED %>%
+  mutate(transcript_id = sub(".*_knownGene_(ENST[0-9]+\\.[0-9]+).*", "\\1", tname))
+
+# Read gene annotations
+genes <- read_table("~/Documents/pgrtk/genes.txt", col_names = c("transcript_id", "X2", "gene_name"))
+
+# Merge with gene names
+CDS_all_samples_PGRTK_final_FILTERED <- merge(CDS_all_samples_PGRTK_final_FILTERED, genes)
+
+CDS_all_samples_PGRTK_final_FILTERED <- CDS_all_samples_PGRTK_final_FILTERED %>% 
+  filter(qname == "chr17")
+
+# Ensure required dataframe exists before processing
+CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled <- data.frame()
+
+# Extract unique contigs
+unique_contigs <- unique(CDS_all_samples_PGRTK_final_FILTERED$qname)
+
+# Loop through each contig to identify duplication groups
+for (current_contig in unique_contigs) {
+  contig_data <- CDS_all_samples_PGRTK_final_FILTERED %>%
+    filter(qname == current_contig) %>%
+    distinct() %>%
+    filter(gene_name %in% c("KANSL1", "MAPT", "NSF", "LRRC37A2", "ARHGAP27", "CRHR1", "PLEKHM1", "WNT3", "SPPLC2", "MAP3K14")) %>%
+    arrange(qstart) %>%
+    group_by(gene_name, strand)
+
+  # Add duplication group logic
+  contig_data <- contig_data %>%
+    mutate(
+      duplication = {
+        duplication_group <- numeric(n())
+        current_group <- 1
+        last_tstart <- ifelse(strand[1] == "+", -Inf, Inf)
+        
+        for (i in seq_along(tstart)) {
+          if ((strand[1] == "+" && tstart[i] < last_tstart) ||
+              (strand[1] == "-" && tstart[i] > last_tstart)) {
+            current_group <- current_group + 1
+          }
+          duplication_group[i] <- current_group
+          last_tstart <- tstart[i]
+        }
+        duplication_group
+      }
+    ) %>%
+    ungroup()
+
+  # Append processed contig data
+  CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled <- bind_rows(
+    CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled,
+    contig_data
+  )
+}
+
+# Summarize gene duplication ranges
+gene_ranges <- CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled %>%
+  group_by(qname, gene_name, duplication, strand) %>%
+  summarize(
+    range_start = min(qstart),
+    range_end = max(qend),
+    .groups = "drop"
+  ) %>%
+  mutate(haplotype = str_extract(qname, "^[^:]+"))
+
+# Prepare the label data
+label_data <- gene_ranges %>%
+  dplyr::select(range_start, range_end, qname, gene_name, strand) %>%
+  group_by(qname, gene_name, strand) %>%
+  summarize(
+    x = (min(range_start) + max(range_end)) / 2,  # Calculate midpoint for label
+    y = first(qname) 
+    #label = paste(unique(V16), collapse = "\n")  # Use newline separator for multiple labels
+  ) %>%
+  ungroup() %>%
+  mutate(haplotype = str_extract(qname, "^[^:]+"))
+
+label_data <- merge(t_unique, label_data, by = "haplotype") %>%
+  filter(qname %in% "chr17") %>%
+  # filter(contig %in% c("HG02165#1#CM087452.1",
+  #                       "HG01505#2#haplotype2-0000149", 
+  #                       "NA20870#1#JBHIJK010000009.1",
+  #                       "HG02178#2#CM089945.1",
+  #                       "HG00864#2#haplotype2-0000060", 
+  #                       "HG01352#2#haplotype2-0000166", 
+  #                       "HG00096#2#haplotype2-0000103",
+  #                       #"NA18939#1#haplotype1-0000030", 
+  #                       "HG00099#1#JBHDWO010000061.1",
+  #                       "HG03732#2#haplotype2-0000081", 
+  #                       "NA19836#2#haplotype2-0000148",
+  #                       "HG01784#2#CM087605.1",
+  #                       "HG00140#2#JBHDVZ010000037.1")) %>% 
+  distinct()
+
+# Define color palette
+color_palette <- c(
+  "#00496F", "#808080", "#59A082", "#94B669", "#C4C856", "#EDB82A", "#EDCC3C", "#808080", 
+  "#DD4124", "#E97C07", "#EDA417", "#CFCC52", "#086989", "#0C7996", "#ED9004", "#808080"
+)
+
+# Ensure unique gene labels, ordered by genome position
+gene_ranges_unique <- gene_ranges %>%
+  dplyr::select(qname, gene_name, strand, range_start, range_end) %>%
+  distinct() %>%
+  dplyr::arrange(qname, range_start) %>%  # Order genes by genome position
+  dplyr::group_by(qname) %>%  # Group by contig to alternate per row
+  #dplyr::mutate(y_offset = rep(c(0.625, 0.375), length.out = n())) %>%  # Alternate y_offset within each contig
+  dplyr::mutate(y_offset = rep(c(1.55, 1.25), length.out = n())) %>%
+  dplyr::ungroup() %>%
+  filter(range_end < 46773911)
+
+hg38_pgrtk_bundle_plot <- ggplot(t_unique, aes(y = contig)) +  
+  geom_gene_arrow(
+    aes(
+      xmin = bstart + 45275488,
+      xmax = bend + 45275488,
+      #xmin = rel_start2,
+      #xmax = rel_end2,
+      fill = bID,
+      forward = !bOrientation
+    ),
+    arrowhead_height = unit(7.8, "mm"),
+    arrowhead_width = unit(7.8, "mm"),
+    arrow_body_height = unit(6.2, "mm"),
+    size = 1
+  ) +
+  scale_fill_manual(values = color_dict) +
+  # Gene label arrows (staggered at 0.4 and 0.8, alternating per row in each contig)
+  geom_segment(
+    data = gene_ranges_unique,
+    aes(
+      x = ifelse(strand == "-", range_end, range_start),
+      xend = ifelse(strand == "-", range_start, range_end),
+      y = qname,  
+      yend = qname
+    ),
+    color = "black",
+    size = 0.5,
+    #position = position_nudge(y = gene_ranges_unique$y_offset - 0.115),
+    position = position_nudge(y = gene_ranges_unique$y_offset -0.115),
+    arrow = arrow(length = unit(1.5, "mm"))
+  ) +
+  # Gene labels (above the gene arrows, following alternating height per row)
+  geom_text(
+    data = gene_ranges_unique,
+    aes(
+      x = (range_start + range_end) / 2,  
+      y = qname,  
+      label = gene_name
+    ),
+    size = 4,  
+    position = position_nudge(y = gene_ranges_unique$y_offset),
+    fontface = "italic",
+    color = "black"
+  ) +
+  coord_cartesian(clip = "off") +
+  theme_bw() +
+  labs(x="chromosome 17 genomic position (hg38)", y="") +
+  theme(
+    panel.border = element_blank(),
+    axis.line.x = element_line(color = "black"),
+    legend.position = "none",
+    axis.line.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+heatmap_plot_aligned <- heatmap_plot +
+  scale_x_continuous(limits = x_range, expand = c(0, 0)) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  )
+
+gene_plot <- hg38_pgrtk_bundle_plot + 
+  xlim(x_min, x_max) +
+  labs(x="chromosome 17 genomic position (hg38)", y="") 
+
+library(patchwork)
+
+final_plot <- heatmap_plot_aligned / hg38_pgrtk_bundle_plot_aligned + 
+  plot_layout(heights = c(4, 1))  # Adjust relative heights as needed
+
+
+ggsave(
+  filename = "~/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/double_recombinants_pgrtk.pdf",
+  plot = final_plot,
+  width = 20,
+  height = 15,
+  units = "in",         # Ensure correct physical dimensions
+  dpi = 600,            # High resolution
+  limitsize = FALSE
+)
+```
+```{r}
+library(patchwork)
+
+#library(svglite)
+ordered_1KG_HGDP_SNPRelate <- read.csv("~/Documents/datasets/SNPRelate/final_data_frame_SNPRelate.csv", check.names = FALSE)
+
+# Ensure both plots have the same x-axis limits
+x_min <- 45268142  # Minimum genomic coordinate
+x_max <- 46921463  # Maximum genomic coordinate
+
+# Update your existing plots to share the same x-axis limits
+pca_plot <- ggplot(data = ordered_1KG_HGDP_SNPRelate) +
+  scale_color_manual(values = c("#74677e", "#ebbdc8", "#ac8eab", "#f2cec7")) +
+  geom_line(aes(x = variable, y = value, group = sample_id, color = genotype), data = ordered_1KG_HGDP_SNPRelate) +
+  theme_bw() +
+  xlim(x_min, x_max) +
+  labs(y = "PC1 (8.7%)") +
+  theme(
+    axis.title.x = element_blank(),   # Remove x-axis title
+    axis.text.x = element_blank(),    # Remove x-axis labels
+    axis.ticks.x = element_blank(),   # Remove x-axis ticks
+    panel.grid.major = element_blank(),  # Remove major grid lines
+    panel.grid.minor = element_blank(),  # Remove minor grid lines
+    panel.border = element_blank(),      # Remove plot border
+    axis.line.y = element_line(color = "black"),  # Keep y-axis line
+    axis.text.y = element_text(color = "black"),  # Keep y-axis labels
+    axis.ticks.y = element_line(color = "black")  # Keep y-axis ticks
+  ) +
+  coord_cartesian(ylim = c(-0.2, 0.2))
+
+
+gene_plot <- hg38_pgrtk_bundle_plot + 
+  #xlim(x_min, x_max) +
+  labs(x="chromosome 17 genomic position (hg38)", y="") 
+
+combined_plot <- pca_plot + heatmap_plot_aligned + gene_plot + plot_layout(ncol = 1, heights = c(5, 5, 2.5))
+
+```
+
+
+```{r}
+View(result)
+
+block_summary <- result %>%
+  filter(block_length >= 10000) %>%
+  filter(start > 45268142) %>% 
+  filter(end < 46921463) %>%
+  #filter(end < 46500000) %>%
+  mutate(region = hgdp_tgp_meta.Genetic.region) %>%
+  count(start, end, block_length, region, name = "region_n") %>%  # count per region
+  group_by(start, end, block_length) %>%
+  mutate(total_n = sum(region_n)) %>%  # total per block
+  mutate(fraction = region_n / total_n) %>%
+  ungroup() %>%
+  dplyr::select(start, end, block_length, total_n, region, fraction) %>%
+  pivot_wider(
+    names_from = region,
+    values_from = fraction,
+    values_fill = 0
+  ) %>%
+  mutate(
+    SAS = MID + CSA  # Combine Middle East and Central/South Asia
+  ) %>%
+  dplyr::select(-MID, -CSA) %>%  # Remove the original columns
+  rename(N = total_n)
+
+#This has taken a sample from each of the 16 rows 
+representative_individuals <- result %>%
+  filter(block_length > 20000, end < 46500000) %>%
+  group_by(start, end, block_length) %>%
+  slice(1) %>%  # or use slice_sample(n = 1) for random representative
+  ungroup()
+
+representative_individuals <- representative_individuals %>%
+  left_join(block_summary %>%
+              dplyr::select(start, end, all_of(region_cols)) %>%
+              distinct(),
+            by = c("start", "end"))
+
+heatmap_plot_representative_individuals <- ggplot(representative_individuals, 
+       aes(xmin = start, xmax = end, ymin = as.numeric(factor(sample_id)) - 0.4, ymax = as.numeric(factor(sample_id)) + 0.4,
+           fill = complex_genotype)) +
+  geom_rect(color = NA) +
+  scale_fill_manual(values = colorscheme, na.value = "black", name = "Genotype") +
+  scale_x_continuous(limits = c(45268142, 46921463 + 250000)) +
+  # scale_x_continuous(
+  #   breaks = seq(45270000, max(representative_individuals$end, na.rm = TRUE), by = 10000),
+  #   labels = function(x) paste0(x / 1e6, " Mb")
+  # ) +
+  scale_y_continuous(
+    breaks = NULL  # suppress y-axis ticks and labels
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    axis.title = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    panel.grid = element_blank(),
+    legend.position = "right"
+  )
+
+library(ggplot2)
+library(dplyr)
+
+# Assign unique row ID for plotting
+block_summary_rows <- block_summary %>%
+  mutate(row_id = row_number())
+
+# Plot
+ggplot(block_summary_rows) +
+  geom_rect(aes(
+    xmin = start,
+    xmax = end,
+    ymin = row_id - 0.4,
+    ymax = row_id + 0.4
+  ),
+  fill = "steelblue", color = "black") +
+  geom_text(aes(
+    x = (start + end) / 2,
+    y = row_id,
+    label = N
+  ),
+  size = 3, vjust = -1.2) +
+  scale_x_continuous(limits = c(45268142, 46921463)) +
+  scale_y_continuous(expand = expansion(mult = c(0.01, 0.05))) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid = element_blank()
+  ) +
+  labs(
+    x = "Genomic coordinate (bp)",
+    y = NULL,
+    title = "Each row = one genomic block; N is sample count"
+  )
+
+library(scatterpie)
+library(tidyr)
+
+region_cols <- c("AFR", "EUR", "AMR", "SAS")
+
+pie_data <- block_summary %>%
+  mutate(row_id = row_number(),
+         pie_x = end + 50000,
+         pie_y = row_id) %>%
+  dplyr::select(row_id, pie_x, pie_y, all_of(region_cols))
+
+library(ggplot2)
+library(scatterpie)
+
+# Main plot
+ggplot() +
+  # Rectangles
+  geom_rect(data = block_summary %>% mutate(row_id = row_number()),
+            aes(xmin = start, xmax = end, ymin = row_id - 0.4, ymax = row_id + 0.4),
+            fill = "steelblue", color = "black") +
+  # Sample count labels
+  geom_text(data = block_summary %>% mutate(row_id = row_number()),
+            aes(x = (start + end) / 2, y = row_id, label = N),
+            size = 3, vjust = -1.2) +
+  # # Pie charts
+  # geom_scatterpie(data = pie_data,
+  #                 aes(x = pie_x, y = pie_y),
+  #                 cols = region_cols,
+  #                 pie_scale = 0.3) +
+  # coord_fixed(ratio = 1e7) +  # keeps pies circular (adjust if needed)
+  scale_x_continuous(limits = c(45268142, 46921463 + 200000)) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid = element_blank()
+  ) +
+  labs(
+    x = "Genomic coordinate (bp)",
+    y = NULL,
+    title = "Genomic blocks with sample counts and regional composition"
+  )
+
+library(ggplot2)
+library(scatterpie)
+library(grid)
+
+# Step 1: Add row_id to block_summary and pie_data
+block_summary <- block_summary %>%
+  mutate(row_id = row_number())
+
+pie_data <- block_summary %>%
+  mutate(pie_x = end + 20000,
+         pie_y = row_id) %>%
+  dplyr::select(row_id, pie_x, pie_y, all_of(region_cols))
+
+# Step 2: Create base plot (no pies yet)
+base_plot <- ggplot() +
+  # Rectangles
+  geom_rect(data = block_summary,
+            aes(xmin = start, xmax = end, ymin = row_id - 0.4, ymax = row_id + 0.4),
+            fill = "steelblue", color = "black") +
+  
+  # Sample count labels
+  geom_text(data = block_summary,
+            aes(x = (start + end) / 2, y = row_id, label = N),
+            size = 3, vjust = -1.2) +
+  # Axis & theme
+  scale_x_continuous(limits = c(45268142, 46921463 + 250000)) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid = element_blank()
+  ) +
+  labs(
+    x = "Genomic coordinate (bp)",
+    y = NULL
+    #title = "Genomic blocks with sample counts and regional composition"
+  ) +
+  coord_cartesian(clip = "off")  # Allow pies to spill beyond plot area
+
+# Create pie grobs
+pie_grobs <- lapply(1:nrow(block_summary), function(i) {
+  pie_data_long <- pie_data[i, ] %>%
+    pivot_longer(cols = all_of(region_cols), names_to = "region", values_to = "count")
+
+  ggpie <- ggplot(pie_data_long, aes(x = "", y = count, fill = region)) +
+    geom_bar(stat = "identity", width = 1) +
+    coord_polar("y") +
+    theme_void() +
+    theme(legend.position = "none") +
+    scale_fill_manual(
+  values = c(
+    AFR = "#D62839",   # Red
+    EUR = "#005BBB",   # Blue
+    AMR = "#00A676",   # Teal
+    SAS = "#FFC107"    # Gold
+  )
+)
+
+  ggplotGrob(ggpie)
+})
+
+# Copy base plot to modify
+combined_plot <- base_plot
+
+# Append pies
+for (i in 1:nrow(block_summary)) {
+  combined_plot <- combined_plot +
+    annotation_custom(
+      grob = pie_grobs[[i]],
+      xmin = block_summary$end[i] + 15000,
+      xmax = block_summary$end[i] + 30000,
+      ymin = block_summary$row_id[i] - 0.5,
+      ymax = block_summary$row_id[i] + 0.5
+    )
+}
+
+# Show plot
+ annotations_plot <- combined_plot
+ 
+ 
+```
+
+```{r}
+base_plot <- ggplot() +
+  geom_rect(data = block_summary,
+            aes(xmin = start + 5000, xmax = end + 5000, ymin = row_id - 0.4, ymax = row_id + 0.4),
+            fill = "steelblue", color = "black") +
+  geom_text(data = block_summary,
+            aes(x = (start + end) / 2, y = row_id, label = N),
+            size = 3, vjust = -1.2) +
+  scale_x_continuous(limits = c(45268142, 46921463), expand = c(0, 0)) +  # <- key change
+  coord_cartesian(clip = "off") +  # keeps pies visible
+  theme_minimal() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid = element_blank(),
+    plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "cm")  # tightly aligned margin
+  ) +
+  labs(
+    x = "Genomic coordinate (bp)",
+    y = NULL
+  )
+
+# Create pie grobs
+pie_grobs <- lapply(1:nrow(block_summary), function(i) {
+  pie_data_long <- pie_data[i, ] %>%
+    pivot_longer(cols = all_of(region_cols), names_to = "region", values_to = "count")
+
+  ggpie <- ggplot(pie_data_long, aes(x = "", y = count, fill = region)) +
+    geom_bar(stat = "identity", width = 1) +
+    coord_polar("y") +
+    theme_void() +
+    theme(legend.position = "none") +
+    scale_fill_manual(
+  values = c(
+    AFR = "#D62839",   # Red
+    EUR = "#005BBB",   # Blue
+    AMR = "#00A676",   # Teal
+    SAS = "#FFC107"    # Gold
+  )
+)
+
+  ggplotGrob(ggpie)
+})
+
+# Copy base plot to modify
+combined_plot <- base_plot
+
+# Append pies
+for (i in 1:nrow(block_summary)) {
+  combined_plot <- combined_plot +
+    annotation_custom(
+      grob = pie_grobs[[i]],
+      xmin = block_summary$end[i] + 15000,
+      xmax = block_summary$end[i] + 30000,
+      ymin = block_summary$row_id[i] - 0.5,
+      ymax = block_summary$row_id[i] + 0.5
+    )
+}
+
+annotations_plot <- combined_plot + 
+  coord_cartesian(xlim = x_range)
+
+gene_plot <- gene_plot + 
+  coord_cartesian(xlim = x_range)
+
+
+# Combine with patchwork
+combined_plot <-annotations_plot / gene_plot +
+    plot_layout(ncol = 1, heights = c(25, 4))
+
+# Plot
+print(combined_plot)
+
+ggsave(
+  filename = "~/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/individual_DCO_calls.pdf",
+  plot = combined_plot,
+  width = 20,
+  height = 20,
+  units = "in",         # Ensure correct physical dimensions
+  dpi = 600,            # High resolution
+  limitsize = FALSE
+)
+```
+
+```{r}
+library(ggplot2)
+
+# Define the region names and colors
+region_colors <- c(
+  AFR = "#D62839",   # Red
+  EUR = "#005BBB",   # Blue
+  AMR = "#00A676",   # Teal
+  SAS = "#FFC107"    # Gold
+)
+
+# Create a dummy dataframe for the legend
+legend_df <- data.frame(region = names(region_colors), x = 1, y = 1:length(region_colors))
+
+# Plot only the legend
+regions_annotations <- ggplot(legend_df, aes(x = x, y = y, fill = region)) +
+  geom_tile() +
+  scale_fill_manual(values = region_colors, name = "Region") +
+  guides(fill = guide_legend(override.aes = list(size = 5))) +
+  theme_void() +
+  theme(legend.position = "right")
+
+ggsave(
+  filename = "~/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/four_panel_pca_recomb_regions_annotations.pdf",
+  plot = regions_annotations,
+  width = 10,
+  height = 5,
+  units = "in",         # Ensure correct physical dimensions
+  dpi = 600,            # High resolution
+  limitsize = FALSE
+)
+```
+
