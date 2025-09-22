@@ -5,7 +5,7 @@ A repo for code and methods related to analyses and figures. This code is deposi
 
 ## Table of contents
 
-Human Haplotype resolved structures of 17q21.31
+Human haplotype resolved structures of 17q21.31
 
 Primate haplotype resolved structures of 17q21.31
 
