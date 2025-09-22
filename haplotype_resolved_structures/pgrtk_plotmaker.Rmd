@@ -1,0 +1,1119 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(tidyverse)
+library(gggenes)
+
+#fn="/Users/samvardhinisridharan/Documents/pgrtk/outputs_trained_CHIMP_BONOBO/output_trained_CHIMP_BONOBO.bed"
+
+fn="/Users/samvardhinisridharan/Documents/pgrtk/outputs_10000_chm13_trained/output_10000_chm13_rerun_trained.bed"
+fn="/Users/samvardhinisridharan/Documents/pgrtk/target/release/Renamed_All_212samples.bed"
+fn="/Users/samvardhinisridharan/Documents/pgrtk/target/release/selected_primate_hsa.bed"
+
+# t = read.table(fn, header=FALSE, sep="\t", comment.char ="", col.names = c("contig", "bstart", "bend", "binf"), skip = 1) %>%
+#   separate(binf, sep=":", c("bID", "bdunno", "bOrientation", "entryix", "exitix")) %>%
+#   mutate(bOrientation = as.numeric(bOrientation)) %>%
+#   filter(!contig %in% c("haplotype1-0000002:37888038-35993148", "CM089973.1:44377111-46050604", "JBHIJC010000063.1:21244284-23091381"))
+
+t <- read.table(fn, header=FALSE, sep="\t", comment.char ="", col.names = c("contig", "bstart", "bend", "binf"), skip = 1) %>%
+  mutate(
+    bID = str_split(binf, ":", simplify = TRUE)[, 1],
+    bdunno = str_split(binf, ":", simplify = TRUE)[, 2],
+    bOrientation = as.numeric(str_split(binf, ":", simplify = TRUE)[, 3]),
+    entryix = str_split(binf, ":", simplify = TRUE)[, 4],
+    exitix = str_split(binf, ":", simplify = TRUE)[, 5]
+  )
+  # filter(contig %in% c("HG00099#1#JBHDWO010000061.1", #H1
+  #                        "HG00096#2#haplotype2-0000103", #H2
+  #                        "AG18355_8_hap2#chr19_hap1_hsa17:11792757-13440106", #bonobo direct
+  #                        "h2tg000018l:141690580-143346663", #most complete gorilla
+  #                        "PR01223_hap1#chr19_hap1_hsa17:13841928-15461349", #complete chimp
+  #                        "chr19_hap1_hsa17:75584353-76896074", #mPonAbe (divergent hap),
+  #                        "chr19_hap2_hsa17:77931330-79243723", #mPonAbe (non-divergent)
+  #                      "chr19_pat_hsa17:19514981-18094864",
+  #                        "chr19_hap1_hsa17:78393637-79708793"))
+  #filter(!contig %in% c("haplotype1-0000002:37888038-35993148", "CM089973.1:44377111-46050604", "JBHIJC010000063.1:21244284-23091381"))
+
+t_filtered <- t %>%
+  mutate(size = bend - bstart) %>%
+  group_by(bID) %>%
+  mutate(count = n()) %>%
+  ungroup()
+
+# Define thresholds using the IQR method
+size_iqr <- IQR(t_filtered$size, na.rm = TRUE)
+size_threshold_low <- quantile(t_filtered$size, 0.25, na.rm = TRUE)
+#size_threshold_high <- quantile(t_filtered$size, 0.75, na.rm = TRUE) + 1.5 * size_iqr
+
+count_iqr <- IQR(t_filtered$count, na.rm = TRUE)
+count_threshold_low <- quantile(t_filtered$count, 0.25, na.rm = TRUE)
+
+# Filter data
+t_cleaned <- t_filtered %>%
+  filter(size >= size_threshold_low | count > count_threshold_low)
+
+t <- t_cleaned
+
+t=t %>% 
+  group_by(contig) %>%
+  mutate(seg_len = bend-bstart) %>%
+  mutate(rel_end = cumsum(seg_len)) %>%
+  mutate(rel_start = lag(rel_end,default=0)) %>%
+  separate(contig,c("sample_id","sample_hap",'sample_contig'),sep="#|\\.",remove=FALSE) %>%
+  dplyr::select(-c(sample_hap,sample_contig)) #%>%
+  #mutate(collapsed_assembly = sample_id %in% bad_samples)
+
+hap_sums = t %>% 
+            mutate(bID_d = paste(bID,".",bOrientation,sep="")) %>%
+            group_by(contig) %>%
+            summarize(hap_struc = paste0(bID,collapse="-"),
+                      hap_struc_d = paste0(bID_d,collapse="-"))
+
+t = inner_join(t,hap_sums,by="contig")
+
+hap_info = t %>% group_by(contig,sample_id,hap_struc,hap_struc_d) %>%
+                 summarize(hap_block_start = min(bstart))
+
+t=inner_join(t,hap_info,by=c("contig","hap_struc","sample_id","hap_struc_d"))
+
+t=t %>% mutate(rel_start2 = bstart-hap_block_start,
+               rel_end2 = bend-hap_block_start)
+
+#t <- t %>% mutate(contig = factor(contig, levels = unique(contig[order(hap_struc_d)])))
+
+# g=ggplot(t, aes(y=contig))
+# g=g+geom_gene_arrow(mapping=aes(xmin=rel_start2,
+#                         xmax=rel_end2,
+#                         fill=bID,
+#                         forward=!bOrientation),
+#                     arrowhead_height = unit(4.8, "mm"),
+#                     arrowhead_width = unit(4.8, "mm"),
+#                     arrow_body_height = unit(3.2, "mm"),
+#                     #position=position_nudge(x=0,y=-.2),
+#                     size=.1) +
+#   theme_bw()
+# 
+# g
+
+t_new_filtered <- t %>%
+  dplyr::select(contig, bstart, bend, binf) %>%
+  filter(contig %in% unique_values$contig)
+
+# Save the dataframe as a TSV file without headers
+#write.table(t_new_filtered, file = "~/Documents/pgrtk/outputs_10000_chm13_trained/output_10000_chm_rerun_trained_FILTERED_rep_struc.bed", sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+
+#ggsave(filename = "~/Documents/figures/cartoons and schematics/HGSVC_HPRC_trial_ordered.pdf", g, width = 18, height = 72, limitsize = FALSE)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(gggenes)
+
+# Step 1: Summarize unique structures
+unique_structures <- hap_sums %>%
+  group_by(hap_struc_d) %>%
+  summarise(n = n(), .groups = 'drop')
+
+# Step 2: Create t_unique and merge with unique_structures
+t_unique <- t %>%
+  distinct(contig, rel_start2, rel_end2, bID, bOrientation, hap_struc_d, sample_id, .keep_all = TRUE) %>%
+  group_by(hap_struc_d) %>%
+  filter(row_number() == 1 | sample_id == first(sample_id) | sample_id == "chr19_pat_hsa17:32381006-18094864") %>% 
+  ungroup() %>%
+  left_join(unique_structures, by = "hap_struc_d") %>% # Merge with unique_structures
+  arrange(desc(n)) # Order by the largest value of `n`
+
+# Step 3: Create unique y_label for each sample using sample_id
+t_unique <- t_unique %>%
+  filter(!sample_id %in% c("chr19_hap1_hsa17:22562619-21095628", "chr19_pat_hsa17:32381006-18094864", "chm13", "chr19_hap2_hsa17:20706827-19239702", "NA210934", "HG00320", "HG00514")) %>%
+  mutate(
+    y_label = paste0("(", n, ")", contig) # Use sample_id directly for unique labels
+  )
+
+# Plot with frequency on the y-axis label
+g <- ggplot(t_unique, aes(y = contig)) +
+  geom_gene_arrow(
+    mapping = aes(
+      xmin = rel_start2,
+      xmax = rel_end2,
+      fill = bID,
+      forward = !bOrientation
+    ),
+    arrowhead_height = unit(4.8, "mm"), 
+    arrowhead_width = unit(4.8, "mm"),
+    arrow_body_height = unit(3.2, "mm"),
+    size = 0.1
+  ) +
+  theme_bw() + 
+  labs(y="")
+  #+
+  #labs(y = "frequency_representative_structure", x = " ") 
+
+
+# Render the plot
+print(g)
+
+#ggsave(filename = "~/Documents/figures/cartoons and schematics/pggb_all_unique_structures_uncollapsed.pdf", g %>% insert_left(p, width = 0.3), width = 12, height = 6, limitsize = FALSE)
+```
+
+```{r}
+# Ensure 'bend' and 'bstart' columns are numeric
+t_unique$bstart <- as.numeric(t_unique$bstart)
+t_unique$bend <- as.numeric(t_unique$bend)
+
+t_unique$bID_d <- paste(t_unique$bID, t_unique$bOrientation, sep = ".")
+
+
+# Calculate median for each bID and create 'l' column
+library(dplyr)
+
+t_unique_new <- t_unique %>%
+  group_by(bID_d) %>%
+  mutate(l = median(bend - bstart, na.rm = TRUE)) %>%
+  ungroup() 
+
+# Select unique values of bID_d and l
+unique_values <- t_unique_new %>%
+  dplyr::select(bID_d, l) %>%
+  distinct()
+
+# Save to a .tsv file
+write.table(unique_values, file = "~/Documents/pgrtk/outputs_10000_chm13_trained/bundle_lengths.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+
+# Select unique values of bID_d and l
+unique_values <- t_unique_new %>%
+  dplyr::select(contig, n, hap_struc_d) %>%
+  distinct()
+
+write.table(unique_values, file = "~/Documents/pgrtk/outputs_10000_chm13_trained/haplotype_representative_structures_rep.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+```{r read in the Snakemake - Peter distance output}
+#Load in pairwise distances between hap structures, cluster them, and plot
+#install.packages("ggtree")
+#install.packages("ade4")
+#install.packages("treeio")
+library(ggtree)
+library(ade4)
+library(treeio)
+  
+t_hap_dists = read.table("~/Documents/pgrtk/outputs_10000_trained/output_10000_rerun_trained_FILTERED.dist", header=FALSE,sep=" ")
+   
+dmat = t_hap_dists %>% 
+  dplyr::select(hap1,hap2,edit_d) %>%
+  spread(hap2,edit_d) %>%
+  column_to_rownames(var="hap1") %>% 
+  as.matrix
+
+c=hclust(as.dist(dmat),method="average")
+#phylo = hclust2phylog(c)
+#phylo = as.dendrogram(c)
+
+struc_phy = as.phylo(c)
+  
+pdf("~/Documents/figures/cartoons and schematics/haplotype_struct_clusters_outputs_10000_trained_FILTERED.pdf", width=18,height=12)
+
+ggtree(struc_phy) + geom_tiplab() + 
+  geom_nodelab(geom='label') + hexpand(.05)
+
+dev.off()  
+  
+  #phylo2 <- root(phylo, outgroup = "Int5", edgelabel = TRUE)
+  
+  #plot_order = rownames(dmat)[c$order]
+  #t_rep$hap_struc_d = factor(t_rep$hap_struc_d,levels=plot_order) 
+  
+  #t_rep$hap_struc_d = factor(t_rep$hap_struc_d,levels=plot_order) 
+  
+  
+  #https://shaunpwilkinson.github.io/post/phylogram_blog/
+  #nj_tree = ape::nj(as.dist(dmat))
+hap_counts = t_unique_new %>% ungroup() %>%
+  dplyr::select(contig,hap_struc_d) %>%
+  unique() %>%
+  group_by(hap_struc_d) %>%
+  summarize(n=n())
+
+  # 
+# hap_order = data.frame(hap_struc_d=plot_order) %>% mutate(o = row_number()) 
+# t_rep= inner_join(t_rep,hap_order,on=hap_struc_d) 
+# 
+# paf_genes_rep = inner_join(paf_genes_rep,hap_order,on=hap_struc_d)
+# hap_counts %>% summarise(s=sum(n))
+```
+
+```{r read in the pgrtk distance output}
+# Load required libraries
+library(ape)
+library(ggtree)
+
+# Read the file
+pairwise_data <- read.table("~/Documents/pgrtk/outputs_10000_chm13_trained/output_10000_rerun_chm13_trained_FILTERED_rep_struc.dist", header = FALSE)
+
+# View the data structure (uncomment to inspect)
+# head(pairwise_data)
+
+colnames(pairwise_data) <- c("sample1", "sample2", "distance", "idk1", "idk2")
+
+# Extract relevant columns (adjust based on which column is the true distance)
+pairwise_data <- pairwise_data[, c("sample1", "sample2", "distance")]
+
+# Convert to distance matrix
+dist_matrix <- as.dist(xtabs(distance ~ sample1 + sample2, data = pairwise_data))
+
+# Generate a tree using neighbor-joining
+tree <- nj(dist_matrix)
+
+pdf("~/Documents/figures/cartoons and schematics/haplotype_struct_clusters_outputs_10000_trained_FILTERED_pgrtk.pdf", width=18,height=12)
+
+# Visualize the tree with ggtree
+ggtree(tree) +
+  geom_tiplab() + 
+  geom_nodelab() + hexpand(.05)
+
+dev.off()
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+ordering_df <- data.frame(
+  hap_struc_d = struc_phy$tip.label,
+  order_col = seq_along(struc_phy$tip.label) # Create a numeric order
+)
+
+ordering_df <- data.frame(
+  hap_struc_d = tree$tip.label,
+  order_col = seq_along(tree$tip.label) # Create a numeric order
+)
+
+t_unique_ordered <- t_unique %>%
+  left_join(ordering_df, by = "hap_struc_d")
+
+t_unique_ordered$y_label_unique <- paste0(t_unique_ordered$y_label, "_", t_unique_ordered$order_col)
+
+t_unique_ordered$y_label <- factor(t_unique_ordered$y_label,
+                                   levels = unique(t_unique_ordered$y_label[order(t_unique_ordered$order_col, decreasing = TRUE)]))
+
+t_unique_ordered <- t_unique_ordered %>%
+  arrange(y_label_unique != "14_CM089483")
+
+# t_unique_ordered <- t_unique_ordered %>%
+#   mutate(y_label = factor(
+#     y_label,
+#     levels = c(
+#       unique(y_label[order(order_col, decreasing = TRUE)] %>% setdiff("14_CM089483")),
+#       "14_CM089483" # Add CM089483 to the end
+#     )
+#   ))
+
+#set.seed(7)
+#set.seed(21)
+#set.seed(22)
+#set.seed(22197)
+set.seed(20925)
+
+color_palette <- sample(pnw_palette("Bay", 14, type = "continuous"))
+
+g <- ggplot(t_unique_ordered, aes(y = y_label)) +
+  geom_gene_arrow(
+    mapping = aes(
+      xmin = rel_start2,
+      xmax = rel_end2,
+      fill = bID,
+      forward = !bOrientation
+    ),
+    arrowhead_height = unit(4.8, "mm"), 
+    arrowhead_width = unit(4.8, "mm"),
+    arrow_body_height = unit(3.2, "mm"),
+    size = 0.1
+  ) +
+  scale_fill_manual(values = color_palette) +
+  theme_bw() +
+  labs(y = "frequency_representative_structure", x = " ")
+
+print(g)
+
+#ggsave(filename = "~/Documents/figures/cartoons and schematics/HGSVC_HPRC_trial_ordered_10000_chm13_trained_FILTERED_pgrtk.pdf", g, width = 12, height = 9, limitsize = FALSE)
+```
+
+```{r processing the paf file with all the minimap fasta data}
+library(dplyr)
+library(readr)
+library(biomaRt)
+
+CDS_all_samples_PGRTK_final <- read_table("~/Documents/pgrtk/outputs_10000_chm13_trained/CDS_all_samples_PGRTK_final.paf",
+                                          col_names = FALSE, col_types = cols(X13 = col_skip(),
+                                                                              X14 = col_skip(), X15 = col_skip(),
+                                                                              X16 = col_skip(), X17 = col_skip(),
+X18 = col_skip()))
+
+# CDS_all_samples_PGRTK_final <- read_table("~/Downloads/CDS_all_samples_asm5_PGRTK_final.paf",
+#                                           col_names = FALSE, col_types = cols(X13 = col_skip(),
+#                                                                               X14 = col_skip(), X15 = col_skip(),
+#                                                                               X16 = col_skip(), X17 = col_skip(),
+#                                                                               X18 = col_skip()))
+
+# CDS_all_samples_PGRTK_final <- read_table("~/Downloads/cds_15genes_manuallyCurated_PRIMATES.paf",
+#                                           col_names = FALSE, col_types = cols(X13 = col_skip(),
+#                                                                               X14 = col_skip(), X15 = col_skip(),
+#                                                                               X16 = col_skip(), X17 = col_skip(),
+#                                                                               X18 = col_skip()))
+
+# Assign the appropriate column names
+colnames(CDS_all_samples_PGRTK_final) <- c("qname", "qlen", "qstart", "qend", "strand", "tname", "tlen", "tstart", "tend", "nmatch", "alen", "mapq")
+
+CDS_all_samples_PGRTK_final_FILTERED <- CDS_all_samples_PGRTK_final %>%
+  dplyr::select("qname", "qlen", "qstart", "qend", "strand", "tname", "tlen", "tstart", "tend", "nmatch", "alen", "mapq")
+ 
+CDS_all_samples_PGRTK_final_FILTERED$transcript_id <- sub(".*_knownGene_(ENST[0-9]+\\.[0-9]+).*", "\\1", CDS_all_samples_PGRTK_final_FILTERED$tname)
+
+#Adding annotation information to overlaps_df: keep these two lines in if required. 
+#gencode_v47_annotation <- read_table("~/Downloads/gencode.v47.annotation.gtf", col_names = FALSE)
+#gencode_v47_annotation_chr17 <- gencode_v47_annotation %>% filter(X1 == 'chr17')
+
+# gencode_v47_annotation_chr17 <- gencode_v47_annotation_chr17 %>%
+#   mutate(V10 = str_remove_all(X10, "\"|;$"),   # Remove quotes and trailing semicolons in column V9
+#          V12 = str_remove_all(X12, "\"|;$"), # Remove quotes and trailing semicolons in column V10
+#          V16 = str_remove_all(X16, "\"|;$"),
+#          V18 = str_remove_all(X18, "\"|;$"),
+#          V14 = str_remove_all(X14, "\"|;$")) # Remove quotes and trailing semicolons in column V11
+
+genes <- read_table("~/Documents/pgrtk/genes.txt", col_names = c("transcript_id", "X2", "gene_name"))
+
+CDS_all_samples_PGRTK_final_FILTERED <- merge(CDS_all_samples_PGRTK_final_FILTERED, genes) 
+  #%>% 
+  #dplyr::select("qname", "qlen", "qstart", "qend", "strand", "tname", "tlen", "tstart", "tend", "nmatch", "alen", "mapq", "V16")
+
+# CDS_all_samples_PGRTK_final_FILTERED_COORDS <- merge(t_new_filtered %>% mutate(rel_b_delta = bstart - rel_start2) %>%
+#                                                        dplyr::select(contig, rel_b_delta), CDS_all_samples_PGRTK_final_FILTERED, by.x = c("contig"), by.y = c("qname"))
+
+# CDS_all_samples_PGRTK_final_FILTERED_COORDS <- CDS_all_samples_PGRTK_final_FILTERED_COORDS %>%
+#   group_by(contig) %>%
+#   mutate(q_start_2 = abs(qstart - rel_b_delta),
+#          q_end_2 = abs(qend - rel_b_delta))
+
+CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled <- CDS_all_samples_PGRTK_final_FILTERED
+
+CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled <- data.frame()
+
+unique_contigs <- unique(CDS_all_samples_PGRTK_final_FILTERED_COORDS$contig)
+
+# Loop through each contig
+for (current_contig in unique_contigs) {
+  # Filter data for the current contig
+  contig_data <- CDS_all_samples_PGRTK_final_FILTERED_COORDS %>%
+    filter(contig == current_contig) %>%
+    distinct() %>%
+    filter(gene_name %in% c("ARGHAP27", "KANSL1", "MAPT", "NSF", "CRHR1", "WNT3")) %>%
+    arrange(qstart) %>%
+    group_by(gene_name) %>% # Group by gene_name within each contig
+    group_by(strand)
+  
+  # Add duplication group logic
+  contig_data <- contig_data %>%
+    mutate(
+      duplication = {
+        duplication_group <- numeric(n())
+        current_group <- 1
+        if (strand[1] == "+") {
+          # Logic for positive strand
+          last_tstart <- -Inf
+          for (i in seq_along(tstart)) {
+            if (tstart[i] < last_tstart) {
+              current_group <- current_group + 1 # Increment group when tstart decreases
+            }
+            duplication_group[i] <- current_group
+            last_tstart <- tstart[i]
+          }
+        } else if (strand[1] == "-") {
+          # Logic for negative strand
+          last_tstart <- Inf
+          for (i in seq_along(tstart)) {
+            if (tstart[i] > last_tstart) {
+              current_group <- current_group + 1 # Increment group when tstart increases
+            }
+            duplication_group[i] <- current_group
+            last_tstart <- tstart[i]
+          }
+        }
+        duplication_group
+      }
+    ) %>%
+    ungroup() # Ungroup after processing the contig
+
+  # Append the processed contig data to the result
+  CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled <- bind_rows(CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled, contig_data)
+}
+
+gene_ranges <- CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled %>%
+  group_by(contig, gene_name, duplication, strand) %>%
+  summarize(
+    range_start = min(q_start_2),
+    range_end = max(q_end_2),
+    .groups = "drop"
+  ) 
+  
+```
+
+```{r}
+# Prepare the label data
+label_data <- gene_ranges %>%
+  group_by(contig, gene_name) %>%
+  summarize(
+    x = (rel_start2 + rel_end2) / 2,  # Calculate the midpoint for the label
+    y = first(y_label),  # Use the same y_label for positioning
+    label = paste(unique(V16), collapse = "\n")  # Use newline as separator
+  ) %>%
+  ungroup()
+
+# Prepare label_data with only the first occurrence of each bID
+label_data_filtered <- label_data %>%
+  filter(contig == "chr17") %>%
+  group_by(bID) %>%
+  slice(1) %>%  # Keep only the first occurrence of each bID
+  ungroup()
+
+g <- ggplot(t_ordered_unique_WITH_LABELS %>% filter(contig == "chr17"), aes(y = y_label)) +
+  geom_gene_arrow(
+    mapping = aes(
+      xmin = rel_start2,
+      xmax = rel_end2,
+      fill = bID,
+      forward = !bOrientation
+    ),
+    arrowhead_height = unit(4.8, "mm"),
+    arrowhead_width = unit(4.8, "mm"),
+    arrow_body_height = unit(3.2, "mm"),
+    size = 0.1
+  ) +
+  geom_text(
+    data = label_data_filtered,
+    aes(x = x, y = y + 0.03, label = label),  # Apply dynamic nudge_y
+    size = 1.85,  # Adjust text size
+    hjust = 0.5  # Center-align the labels
+  ) +
+  scale_fill_manual(values = color_palette) +
+  theme_bw() +
+  labs(y = "frequency_representative_structure", x = " ")
+
+print(g)
+
+#ggsave(filename = "~/Documents/figures/cartoons and schematics/HGSVC_HPRC_trial_ordered_10000_chm13_trained_FILTERED_pgrtk_LABELED.pdf", g, width = 12, height = 2.75, limitsize = FALSE)
+
+```
+
+```{r}
+set.seed(51298)
+color_palette <- sample(pnw_palette("Bay", 16, type = "continuous"))
+color_palette[2] <- 808080
+color_palette[8] <- 808080
+
+color_palette <- c(
+  "#00496F", # 1
+  "#808080", # 2 (Grey)
+  "#59A082", # 3
+  "#94B669", # 4
+  "#C4C856", # 5
+  "#EDB82A", # 6
+  "#EDCC3C", # 7
+  "#808080", # 8 (Grey)
+  "#DD4124", # 9
+  "#E97C07", # 10
+  "#EDA417", # 11
+  "#CFCC52", # 12
+  "#086989", # 13
+  "#0C7996", # 14
+  "#ED9004",
+  "#808080"  # 16
+)
+# Ensure y_label is numeric
+#t_ordered_unique_WITH_LABELS <- t_ordered_unique_WITH_LABELS %>%
+  #mutate(y_label = as.numeric(as.character(y_label)))
+# 
+# # Update label data
+# label_data <- t_ordered_unique_WITH_LABELS %>%
+#   group_by(bID, contig) %>%
+#   summarize(
+#     x = (rel_start2 + rel_end2) / 2,
+#     y = as.numeric(first(y_label)),  # Ensure numeric y
+#     label = paste(unique(V16), collapse = "\n")
+#   ) %>%
+#   ungroup()
+# 
+# label_data_filtered <- label_data %>%
+#   filter(contig == "chr17") %>%
+#   group_by(bID) %>%
+#   slice(1) %>%
+#   ungroup()
+# 
+
+# gene_labels_arrow <- t_ordered_unique_WITH_LABELS_coords %>%
+#   group_by(contig,V16) %>%
+#   summarize(
+#     min_start = min(c(q_start_2, q_end_2)),
+#     max_end = max(c(q_start_2, q_end_2)),
+#     min_start_length = max_end - min_start
+#   ) %>%
+#   filter(min_start_length > 10000)
+# 
+# gene_labels_arrow_jittered <- gene_labels_arrow %>%
+#   arrange(min_start, max_end) %>%
+#   mutate(
+#     y = 0.9 + cumsum(c(0, diff(min_start) < 2 | diff(max_end) < 2)) * 0.01
+#   )
+# 
+# t_ordered_with_y <- t_ordered_unique_WITH_LABELS_coords %>% 
+#   filter(contig == "chr17") %>%
+#   inner_join(
+#     gene_labels_arrow_jittered %>% select(V16, y),
+#     by = "V16"
+#   ) %>%
+#   distinct()
+
+g <- ggplot(
+  t_unique_ordered %>% arrange(y_label_unique != "14_CM089483"), 
+  #%>% filter(contig == "chr17"),
+  aes(y = y_label_unique)
+) +
+  geom_gene_arrow(
+    mapping = aes(
+      xmin = rel_start2,
+      xmax = rel_end2,
+      fill = bID,
+      forward = !bOrientation
+    ),
+    arrowhead_height = unit(4.8, "mm"),
+    arrowhead_width = unit(4.8, "mm"),
+    arrow_body_height = unit(3.2, "mm"),
+    size = 0.1
+  ) +
+  # geom_segment(
+  #   data = CDS_all_samples_PGRTK_final_FILTERED_COORDS %>%
+  #     filter(
+  #       contig == "chr17",
+  #       (t_unique_ordered %>% filter(contig == "chr17"))$rel_end2 >= q_end_2
+  #     ) %>%
+  #     distinct() %>%
+  #     mutate(gene_name = as_factor(gene_name), y = as.numeric(gene_name) / 60 + 0.7),
+  #   aes(
+  #     x = ifelse(strand == "-", q_end_2, q_start_2),
+  #     xend = ifelse(strand == "-", q_start_2, q_end_2),
+  #     y = y,
+  #     yend = y,
+  #     color = gene_name
+  #   ),
+  #   size = 0.5,
+  #   arrow = arrow(length = unit(1.5, "mm"))
+  # ) +
+  geom_segment(
+    data = merge(gene_ranges, t_unique_ordered, by = "contig") %>% dplyr::select("contig", "gene_name", "duplication", "strand", "range_start", "range_end", "y_label_unique") %>% distinct(),
+    aes(
+      x = ifelse(strand == "-", range_end, range_start),
+      xend = ifelse(strand == "-", range_start, range_end),
+      y = y_label_unique,
+      yend = y_label_unique,
+      color = "black"
+    ),
+    size = 0.5,
+    position = position_nudge(y = 0.35),
+    arrow = arrow(length = unit(1.5, "mm"))
+  ) +
+  geom_text(
+    data = merge(gene_ranges, t_unique_ordered, by = "contig") %>% dplyr::select("contig", "gene_name", "duplication", "strand", "range_start", "range_end", "y_label_unique") %>% distinct(),
+    aes(
+      x = (range_start + range_end) / 2, # Position label at the midpoint of the range
+      y = y_label_unique, # Slightly above the arrow at y = 1.1
+      label = gene_name
+    ),
+    size = 2.0, # Adjust text size as needed
+    position = position_nudge(y = 0.54),
+    color = "black" # Label color
+  ) +
+  scale_fill_manual(values = color_palette) +
+  #scale_fill_manual(values=pals::cols25()) +
+  theme_bw() +
+  labs(y = "frequency_representative_structure", x = " ")
+
+
+#ggsave(filename = "~/Documents/figures/cartoons and schematics/HGSVC_HPRC_trial_ordered_10000_chm13_trained_FILTERED_pgrtk_LABELED_with_segments_new.pdf",g, width = 12, height = 10,limitsize = FALSE)
+```
+
+```{r CHM 13}
+set.seed(51298)
+color_palette <- sample(pnw_palette("Bay", 16, type = "continuous"))
+color_palette[2] <- 808080
+color_palette[8] <- 808080
+
+color_palette <- c(
+  "#00496F", # 1
+  "#808080", # 2 (Grey)
+  "#59A082", # 3
+  "#94B669", # 4
+  "#C4C856", # 5
+  "#EDB82A", # 6
+  "#EDCC3C", # 7
+  "#808080", # 8 (Grey)
+  "#DD4124", # 9
+  "#E97C07", # 10
+  "#EDA417", # 11
+  "#CFCC52", # 12
+  "#086989", # 13
+  "#0C7996", # 14
+  "#ED9004",
+  "#808080"  # 16
+)
+
+CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled <-
+  data.frame()
+
+unique_contigs <-
+  unique(CDS_all_samples_PGRTK_final_FILTERED_COORDS$contig)
+
+unique_contigs = "chr17"
+
+for (current_contig in unique_contigs) {
+  # Filter data for the current contig
+  contig_data <- CDS_all_samples_PGRTK_final_FILTERED_COORDS %>%
+    filter(contig == current_contig) %>%
+    distinct() %>%
+    # Standardize gene names
+    mutate(gene_name = case_when(
+      gene_name %in% c("LRRC37A.") ~ "LRRC37A",
+      #gene_name %in% c("LRRC37A.", "LRRC37A2") ~ "LRRC37A",
+      TRUE ~ gene_name
+    )) %>%
+    # Filter out specific genes
+    filter(
+      !gene_name %in% c(
+        "ARL17A",
+        "ARL17B",
+        "STH" 
+        #"WNT9B"
+      )
+    ) %>%
+    arrange(qstart) %>%
+    group_by(gene_name) %>% # Group by gene_name within each contig
+    group_by(strand)
+  
+  # Add duplication group logic
+  contig_data <- contig_data %>%
+    mutate(duplication = {
+      duplication_group <- numeric(n())
+      current_group <- 1
+      if (strand[1] == "+") {
+        # Logic for positive strand
+        last_tstart <- -Inf
+        for (i in seq_along(tstart)) {
+          if (tstart[i] < last_tstart) {
+            current_group <- current_group + 1 # Increment group when tstart decreases
+          }
+          duplication_group[i] <- current_group
+          last_tstart <- tstart[i]
+        }
+      } else if (strand[1] == "-") {
+        # Logic for negative strand
+        last_tstart <- Inf
+        for (i in seq_along(tstart)) {
+          if (tstart[i] > last_tstart) {
+            current_group <- current_group + 1 # Increment group when tstart increases
+          }
+          duplication_group[i] <- current_group
+          last_tstart <- tstart[i]
+        }
+      }
+      duplication_group
+    }) %>%
+    ungroup() # Ungroup after processing the contig
+  
+  # Append the processed contig data to the result
+  CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled <-
+    bind_rows(CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled,
+              contig_data)
+}
+
+
+gene_ranges <-
+  CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled %>%
+  group_by(contig, gene_name, duplication, strand) %>%
+  summarize(
+    range_start = min(q_start_2),
+    range_end = max(q_end_2),
+    .groups = "drop"
+  )
+
+g <- ggplot(
+  t_unique_ordered %>%
+    filter(contig == "chr17") %>%
+    filter(!bID == 9),
+  aes(y = y_label_unique)
+) +
+  geom_gene_arrow(
+    mapping = aes(
+      xmin = rel_start2,
+      xmax = rel_end2,
+      fill = bID,
+      forward = !bOrientation
+    ),
+    arrowhead_height = unit(4.8, "mm"),
+    arrowhead_width = unit(4.8, "mm"),
+    arrow_body_height = unit(3.2, "mm"),
+    size = 0.1
+  ) +
+  geom_segment(
+    data = merge(
+      gene_ranges %>% filter(contig == "chr17"),
+      t_unique_ordered %>% filter(contig == "chr17"),
+      by = "contig"
+    ) %>%
+      dplyr::select(
+        "contig", "gene_name", "duplication", "strand",
+        "range_start", "range_end", "y_label_unique"
+      ) %>%
+      distinct() %>%
+      filter(!(gene_name == "KANSL1" & duplication == 4)) %>%
+      filter(gene_name %in% c("MAP3K14", "PLEKHM1", "SPPL2C", "KANSL1", "LRRC37A", "WNT9B")) %>%
+      filter(range_end < 1545166) %>%
+      mutate(range_length = abs(range_start-range_end)) %>%
+      filter(range_length > 100),
+    aes(
+      x = ifelse(strand == "-", range_end, range_start),
+      xend = ifelse(strand == "-", range_start, range_end),
+      y = y_label_unique,
+      yend = y_label_unique,
+      color =   # Color segments by gene_name
+    ),
+    position = position_nudge(y = 0.05),
+    size = 0.5,
+    arrow = arrow(length = unit(1.5, "mm"))
+  ) +
+  geom_segment(
+    data = merge(
+      gene_ranges %>% filter(contig == "chr17"),
+      t_unique_ordered %>% filter(contig == "chr17"),
+      by = "contig"
+    ) %>%
+      dplyr::select(
+        "contig", "gene_name", "duplication", "strand",
+        "range_start", "range_end", "y_label_unique"
+      ) %>%
+      distinct() %>%
+      filter(!(gene_name == "KANSL1" & duplication == 4)) %>%
+      filter(gene_name %in% c("NSF","MAPT")) %>%
+      filter(range_end < 1545166) %>%
+      mutate(range_length = abs(range_start-range_end)) %>%
+      filter(range_length > 100),
+    aes(
+      x = ifelse(strand == "-", range_end, range_start),
+      xend = ifelse(strand == "-", range_start, range_end),
+      y = y_label_unique,
+      yend = y_label_unique,
+      color =   # Color segments by gene_name
+    ),
+    position = position_nudge(y = 0.09),
+    size = 0.5,
+    arrow = arrow(length = unit(1.5, "mm"))
+  ) +
+  geom_text(
+    data = merge(gene_ranges, t_unique_ordered, by = "contig") %>%
+  dplyr::select("contig", "gene_name", "duplication", "strand", "range_start", "range_end", "y_label_unique") %>%
+  filter(range_end < 1545166, gene_name %in% c("MAP3K14", "PLEKHM1", "SPPL2C", "KANSL1", "WNT9B", "LRRC37A")) %>%
+  distinct() %>%
+      mutate(range_length = abs(range_start-range_end)) %>%
+      filter(range_length > 100),
+    aes(
+      x = (range_start + range_end) / 2, # Position label at the midpoint of the range
+      y = y_label_unique, # Slightly above the arrow at y = 1.1
+      label = gene_name
+    ),
+    size = 2.2, # Adjust text size as needed
+    fontface = "italic",
+    position = position_nudge(y = 0.07),
+    color = "black" # Label color
+  ) +
+  geom_text(
+    data = merge(gene_ranges, t_unique_ordered, by = "contig") %>%
+  dplyr::select("contig", "gene_name", "duplication", "strand", "range_start", "range_end", "y_label_unique") %>%
+  filter(range_end < 1545166, gene_name %in% c("NSF", "MAPT")) %>%
+  distinct() %>%
+      mutate(range_length = abs(range_start-range_end)) %>%
+      filter(range_length > 100),
+    aes(
+      x = (range_start + range_end) / 2, # Position label at the midpoint of the range
+      y = y_label_unique, # Slightly above the arrow at y = 1.1
+      label = gene_name
+    ),
+    size = 2.2, # Adjust text size as needed
+    fontface = "italic",
+    position = position_nudge(y = 0.11),
+    color = "black" # Label color
+  ) +
+  # scale_x_continuous(
+  #   #name = "Genomic Coordinates (bStart to bEnd)",
+  #   limits = c(bStart_min-100000, bEnd_max+100000), # Set x-axis to bStart and bEnd
+  #   #breaks = seq(bStart_min, bEnd_max, length.out = 10), # Adjust tick marks
+  #   #expand = c(0, 0) # Remove padding
+  # ) +
+  scale_fill_manual(values = color_palette) +
+  scale_x_continuous(labels = function(x) x + 46135002) +
+  theme_bw() +
+  labs(y = NULL, x = "genomic position (CHM13)") +
+  theme(
+  axis.text.y = element_blank(),       # Remove y-axis text
+  axis.title.y = element_blank(),      # Remove y-axis title
+  axis.ticks.y = element_blank(),      # Remove y-axis ticks
+  panel.grid.major.y = element_blank(),# Remove major grid lines along y-axis
+  panel.grid.minor.y = element_blank(),# Remove minor grid lines along y-axis
+  plot.margin = unit(c(0, 0, 0, 0), "cm"),  # Remove all plot margins
+  panel.spacing = unit(0, "cm")        # Remove panel spacing
+) +
+guides(fill = "none")
+
+#ggsave(filename = "~/Documents/figures/cartoons and schematics/chm13.pdf",g, width = 12, height = 4.5,limitsize = FALSE)
+```
+
+```{r cleaned up labeled code}
+library(dplyr)
+library(readr)
+library(biomaRt)
+
+CDS_all_samples_PGRTK_final <- read_table("~/Documents/pgrtk/outputs_10000_chm13_trained/CDS_all_samples_PGRTK_final.paf",
+                                          col_names = FALSE, col_types = cols(X13 = col_skip(),
+                                                                              X14 = col_skip(), X15 = col_skip(),
+                                                                              X16 = col_skip(), X17 = col_skip(),
+                                                                              X18 = col_skip()))
+
+# Assign column names
+colnames(CDS_all_samples_PGRTK_final) <- c("qname", "qlen", "qstart", "qend", "strand", "tname", "tlen", "tstart", "tend", "nmatch", "alen", "mapq")
+
+# Filter relevant columns
+CDS_all_samples_PGRTK_final_FILTERED <- CDS_all_samples_PGRTK_final %>%
+  dplyr::select(qname, qlen, qstart, qend, strand, tname, tlen, tstart, tend, nmatch, alen, mapq)
+
+# Extract transcript ID from tname
+CDS_all_samples_PGRTK_final_FILTERED <- CDS_all_samples_PGRTK_final_FILTERED %>%
+  mutate(transcript_id = sub(".*_knownGene_(ENST[0-9]+\\.[0-9]+).*", "\\1", tname))
+
+# Read gene annotations
+genes <- read_table("~/Documents/pgrtk/genes.txt", col_names = c("transcript_id", "X2", "gene_name"))
+
+# Merge with gene names
+CDS_all_samples_PGRTK_final_FILTERED <- merge(CDS_all_samples_PGRTK_final_FILTERED, genes)
+
+# Ensure required dataframe exists before processing
+#CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled <- data.frame()
+
+# Extract unique contigs
+unique_contigs <- unique(CDS_all_samples_PGRTK_final_FILTERED$qname)
+
+# Loop through each contig to identify duplication groups
+for (current_contig in unique_contigs) {
+  contig_data <- CDS_all_samples_PGRTK_final_FILTERED %>%
+    filter(qname == current_contig) %>%
+    distinct() %>%
+    filter(gene_name %in% c("ARGHAP27", "KANSL1", "MAPT", "NSF", "CRHR1", "WNT3")) %>%
+    arrange(qstart) %>%
+    group_by(gene_name, strand)
+
+  # Add duplication group logic
+  contig_data <- contig_data %>%
+    mutate(
+      duplication = {
+        duplication_group <- numeric(n())
+        current_group <- 1
+        last_tstart <- ifelse(strand[1] == "+", -Inf, Inf)
+        
+        for (i in seq_along(tstart)) {
+          if ((strand[1] == "+" && tstart[i] < last_tstart) ||
+              (strand[1] == "-" && tstart[i] > last_tstart)) {
+            current_group <- current_group + 1
+          }
+          duplication_group[i] <- current_group
+          last_tstart <- tstart[i]
+        }
+        duplication_group
+      }
+    ) %>%
+    ungroup()
+
+  # Append processed contig data
+  CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled <- bind_rows(
+    CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled,
+    contig_data
+  )
+}
+
+# Summarize gene duplication ranges
+gene_ranges <- CDS_all_samples_PGRTK_final_FILTERED_COORDS_gene_dups_labeled %>%
+  group_by(qname, gene_name, duplication, strand) %>%
+  summarize(
+    range_start = min(qstart),
+    range_end = max(qend),
+    .groups = "drop"
+  )
+
+# Display results
+print(gene_ranges)
+
+# Prepare the label data
+label_data <- gene_ranges %>%
+  group_by(qname, gene_name) %>%
+  summarize(
+    x = (min(range_start) + max(range_end)) / 2,  # Calculate midpoint for label
+    y = first(qname) 
+    #label = paste(unique(V16), collapse = "\n")  # Use newline separator for multiple labels
+  ) %>%
+  ungroup()
+
+# Filter labels for chromosome 17 and keep only the first occurrence of each bID
+label_data_filtered <- label_data %>%
+  filter(qname == "chr17") %>%
+  group_by(bID) %>%
+  slice(1) %>%  # Retain first occurrence of each bID
+  ungroup()
+
+# Define color palette
+color_palette <- c(
+  "#00496F", "#808080", "#59A082", "#94B669", "#C4C856", "#EDB82A", "#EDCC3C", "#808080", 
+  "#DD4124", "#E97C07", "#EDA417", "#CFCC52", "#086989", "#0C7996", "#ED9004", "#808080"
+)
+
+
+contig_order <- c(
+  "HG00096#2#haplotype2-0000103",                 # H2
+  "HG00099#1#JBHDWO010000061.1",                  # H1
+  "AG18355_8_hap2#chr19_hap1_hsa17:11792757-13440106",  # chimpanzee direct
+  "PR01223_hap1#chr19_hap1_hsa17:13841928-15461349",    # complete chimp
+  "chr19_pat_hsa17:19514981-18094864", # mPanPan
+  "h2tg000018l:141690580-143346663",             # most complete gorilla
+  "chr19_hap1_hsa17:78393637-79708793", #mPonPyg
+  "chr19_hap2_hsa17:77931330-79243723"          # mPonAbe non-divergent
+)
+
+t <- t %>% mutate(contig = factor(contig, levels = contig_order)) %>% filter(contig != "chr17:45275488-46921902")
+
+# Create the plot
+g <- ggplot(t %>% filter(contig %in% contig_order), aes(y = contig)) +
+  geom_gene_arrow(
+    mapping = aes(
+      xmin = rel_start2,
+      xmax = rel_end2,
+      fill = bID,
+      forward = !bOrientation
+    ),
+    arrowhead_height = unit(4.8, "mm"),
+    arrowhead_width = unit(4.8, "mm"),
+    arrow_body_height = unit(3.2, "mm"),
+    size = 0.1
+  ) +
+  scale_fill_manual(values = color_dict) +
+  theme_bw() +
+  labs(y = "Frequency Representative Structure", x = "") +
+  geom_text(
+    data = t_unique %>%
+      group_by(contig, bID) %>%
+      summarize(x = mean(c(
+        rel_start2, rel_end2
+      )), .groups = "drop"),
+    # Position labels at midpoint
+    aes(x = x, y = contig, label = bID),
+    size = 2.5,
+    color = "black",
+    fontface = "bold",
+    vjust = -1  # Adjust label placement above the arrows
+  ) +
+  theme(legend.position = "none")
+
+
+
+# Print the plot
+print(g)
+
+# Save the figure (Uncomment to save)
+ggsave(filename = "~/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/representative_primates_PANPAN_NEW.pdf", plot = g, width = 12, height = 3.5, limitsize = FALSE)
+
+```
+
+```{r naming the haplotypes}
+t <- read.table(fn, header=FALSE, sep="\t", comment.char ="", col.names = c("contig", "bstart", "bend", "binf"), skip = 1) %>%
+  mutate(
+    bID = str_split(binf, ":", simplify = TRUE)[, 1],
+    bdunno = str_split(binf, ":", simplify = TRUE)[, 2],
+    bOrientation = as.numeric(str_split(binf, ":", simplify = TRUE)[, 3]),
+    entryix = str_split(binf, ":", simplify = TRUE)[, 4],
+    exitix = str_split(binf, ":", simplify = TRUE)[, 5]
+  ) %>%
+  filter(!contig %in% c("chm13#1#chr17", "chr19_hap1_hsa17:22562619-21095628", "chr19_pat_hsa17:32381006-18094864", "chr19_hap2_hsa17:20706827-19239702")) 
+
+t_merged <- left_join(t, merged_alignment_3_5, by = "contig")
+
+t <- t_merged
+
+H1.B1.y1 <- t %>%
+  filter(bID_3 == 1, bID_5 == 1) %>%
+  mutate(contig = as.character(contig)) %>%
+  #filter(!contig %in% c("0", "1", "2", "3", "5")) %>%
+  arrange(contig, bstart) %>%
+  group_by(contig) %>%
+  mutate(n_bID_0_to_5 = sum(bID >= 3 & bID <= 5)) %>%
+  ungroup() %>%
+  dplyr::select(contig, bID_3, bID_5, n_bID_0_to_5) %>%
+  unique()
+
+H1.B1.y2 <- t %>%
+  filter(bID_3 == 1, bID_5 == 2) %>%
+  mutate(contig = as.character(contig)) %>%
+  filter(!contig %in% c("0", "1", "2", "3", "5")) %>%
+  arrange(contig, bstart) %>%
+  group_by(contig) %>%
+  mutate(n_bID_0_to_5 = sum(bID >= 3 & bID <= 5)) %>%
+  ungroup() %>%
+  dplyr::select(contig, bID_3, bID_5, n_bID_0_to_5) %>%
+  unique()
+
+H1.B1.y3 <- t %>%
+  filter(bID_3 == 1, bID_5 == 3) %>%
+  mutate(contig = as.character(contig)) %>%
+  filter(!contig %in% c("0", "1", "2", "3", "5")) %>%
+  arrange(contig, bstart) %>%
+  group_by(contig) %>%
+  mutate(n_bID_0_to_5 = sum(bID >= 3 & bID <= 4)) %>%
+  ungroup() %>%
+  dplyr::select(contig, bID_3, bID_5, n_bID_0_to_5) %>%
+  unique()
+
+H1.B1.y4 <- t %>%
+  filter(bID_3 == 1, bID_5 == 4) %>%
+  mutate(contig = as.character(contig)) %>%
+  filter(!contig %in% c("0", "1", "2", "3", "5")) %>%
+  arrange(contig, bstart) %>%
+  group_by(contig) %>%
+  mutate(n_bID_0_to_5 = sum(bID >= 3 & bID <= 4)) %>%
+  ungroup() %>%
+  dplyr::select(contig, bID_3, bID_5, n_bID_0_to_5) %>%
+  unique()
+
+
+merged_alignment_3_5_NEW <- merged_alignment_3_5 %>%
+  left_join(H1.B1.y1 %>% dplyr::select(contig, n_bID_0_to_5), by = "contig") 
+
+merged_alignment_3_5_NEW <- merged_alignment_3_5_NEW %>%
+  mutate(n_bID_label = case_when(
+    n_bID_0_to_5 == 3 ~ ".1",
+    n_bID_0_to_5 == 5 ~ ".2",
+    n_bID_0_to_5 == 4 ~ ".3",
+    contig == "HG01505#2#haplotype2-0000149" ~ ".2",
+    contig == "NA20870#1#JBHIJK010000009.1" ~ ".3", 
+    contig == "HG01505#2#haplotype2-0000149" ~ ".2", 
+    contig == "NA20870#1#JBHIJK010000009.1" ~ ".3",
+    TRUE ~ " "  # fallback for any other value
+  ))
+  
+```
+
