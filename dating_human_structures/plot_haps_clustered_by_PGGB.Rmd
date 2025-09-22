@@ -1,0 +1,1884 @@
+---
+title: "plot_haps_clustered_by_PGGB.Rmd"
+author: "Samvardhini"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r loading libraries}
+library(ggtree)
+library(ade4)
+library(treeio)
+library(aplot)
+library(gggenes)
+library(dplyr)
+library(tidyr)
+```
+
+```{r}
+#t_dists = read.table("~/Downloads/cleaned.fasta.jaccard",header=T,sep="\t",comment.char="",check.names=FALSE) #all 27 unique samples
+#t_dists = read.table("~/Downloads/6samples.jaccard",header=T,sep="\t",comment.char="",check.names=FALSE) #6 samples trial
+t_dists = read.table("~/Downloads/cleaned_no_chm13.jaccard",header=T,sep="\t",comment.char="",check.names=FALSE) #all 27 unique samples
+#t_dists = read.table("~/Downloads/all_representive_haps_chm13_hg38_no_missasembly (2).jaccard",header=T,sep="\t",comment.char="",check.names=FALSE)
+
+dmat_subset = t_dists %>% 
+  transmute(hap1=group.a,hap2=group.b,dist=jaccard.distance) %>%
+  arrange(hap1,hap2) %>%
+  pivot_wider(names_from = hap2, values_from = dist) %>%
+  column_to_rownames(var="hap1") %>% 
+  as.matrix
+
+c=hclust(as.dist(dmat_subset),method="average")
+struc_phy = as.phylo(c)
+
+p = ggtree(rooted_tree) +
+  #geom_text(aes(label=label), hjust = -0.2) +
+  xlim_tree(0.1)
+
+g %>% insert_left(p, width = 0.3) 
+
+print(p)
+```
+
+```{r humans}
+nodeid.tbl_tree <- utils::getFromNamespace("nodeid.tbl_tree", "tidytree")
+rootnode.tbl_tree <- utils::getFromNamespace("rootnode.tbl_tree", "tidytree")
+offspring.tbl_tree <- utils::getFromNamespace("offspring.tbl_tree", "tidytree")
+offspring.tbl_tree_item <- utils::getFromNamespace(".offspring.tbl_tree_item", "tidytree")
+child.tbl_tree <- utils::getFromNamespace("child.tbl_tree", "tidytree")
+parent.tbl_tree <- utils::getFromNamespace("parent.tbl_tree", "tidytree")
+#t_dists = read.table("~/Downloads/cleaned_no_chm13.jaccard",header=T,sep="\t",comment.char="",check.names=FALSE) #all 27 unique samples
+t_dists = read.table("~/Downloads/all_representive_haps_chm13_hg38_no_missasembly (1).jaccard",header=T,sep="\t",comment.char="",check.names=FALSE) #all 27 unique samples
+
+t_dists <- t_dists %>% 
+  filter(group.a %in% c("HG02165#1#CM087452.1",
+                        "HG01505#2#haplotype2-0000149",
+                        "NA20870#1#JBHIJK010000009.1",
+                        "HG02178#2#CM089945.1",
+                        "HG00864#2#haplotype2-0000060",
+                        "HG01352#2#haplotype2-0000166",
+                        "HG00096#2#haplotype2-0000103",
+                        "HG00232#1#CM089999.1",
+                        #"HG02011#2#haplotype2-0000064",
+                        #"NA18939#1#haplotype1-0000030",
+                        "HG00099#1#JBHDWO010000061.1",
+                        "HG03732#2#haplotype2-0000081",
+                        "HG00140#2#JBHDVZ010000037.1")) %>%
+   filter(group.b %in% c("HG02165#1#CM087452.1",
+                        "HG01505#2#haplotype2-0000149",
+                        "NA20870#1#JBHIJK010000009.1",
+                        "HG02178#2#CM089945.1",
+                        "HG00864#2#haplotype2-0000060",
+                        "HG01352#2#haplotype2-0000166",
+                        "HG00096#2#haplotype2-0000103",
+                        "HG00232#1#CM089999.1",
+                        #"HG02011#2#haplotype2-0000064",
+                        #"NA18939#1#haplotype1-0000030",
+                        "HG00099#1#JBHDWO010000061.1",
+                        "HG03732#2#haplotype2-0000081",
+                        "HG00140#2#JBHDVZ010000037.1"))
+
+
+dmat_subset = t_dists %>% 
+  transmute(hap1=group.a,hap2=group.b,dist=jaccard.distance) %>%
+  arrange(hap1,hap2) %>%
+  pivot_wider(names_from = hap2, values_from = dist) %>%
+  column_to_rownames(var="hap1") %>% 
+  as.matrix
+
+c=hclust(as.dist(dmat_subset),method="average")
+struc_phy = as.phylo(c)
+
+rooted_tree <- root(struc_phy, outgroup = "HG00096#2#haplotype2-0000103", resolve.root = TRUE)
+
+old_sample_sizes <- c(
+  "HG02165#1#CM087452.1" = 3,
+  "HG01505#2#haplotype2-0000149" = 1,
+  "NA20870#1#JBHIJK010000009.1" = 1,
+  "HG02178#2#CM089945.1" = 3,
+  "HG00864#2#haplotype2-0000060" = 81,
+  "HG01352#2#haplotype2-0000166" = 1,
+  "HG00096#2#haplotype2-0000103" = 14,
+  "HG00232#1#CM089999.1" = 11,
+  #"HG02011#2#haplotype2-0000064" = 23,
+  "HG00099#1#JBHDWO010000061.1" = 63,
+  "HG03732#2#haplotype2-0000081" = 1,
+  "HG00140#2#JBHDVZ010000037.1" = 16
+)
+
+sample_sizes <- c(
+  "HG02165#1#CM087452.1" = 37,
+  "HG01505#2#haplotype2-0000149" = 1,
+  "NA20870#1#JBHIJK010000009.1" = 1,
+  "HG02178#2#CM089945.1" = 3,
+  "HG00864#2#haplotype2-0000060" = 59,
+  "HG01352#2#haplotype2-0000166" = 1,
+  "HG00096#2#haplotype2-0000103" = 14,
+  "HG00232#1#CM089999.1" = 72,
+  #"HG02011#2#haplotype2-0000064" = 23,
+  "HG00099#1#JBHDWO010000061.1" = 1,
+  "HG03732#2#haplotype2-0000081" = 1,
+  "HG00140#2#JBHDVZ010000037.1" = 16
+)
+
+# Create a data frame to match tip labels with sample sizes
+tip_data <- data.frame(label = rooted_tree$tip.label) %>%
+  mutate(sample_size = sample_sizes[label])  # Map sample size to labels
+
+# Ensure missing sample sizes are handled (replace NA with smallest size)
+tip_data$sample_size[is.na(tip_data$sample_size)] <- min(sample_sizes, na.rm = TRUE)
+
+p <- ggtree(rooted_tree) %<+% tip_data +  # Attach data to tree
+  #geom_tippoint(aes(size = sample_size), color = "darkgrey") +  # Circles
+  #geom_text(aes(label = sample_size), hjust = 0.375, size = 4) +  # Add sample size next to circles
+  scale_size_continuous(range = c(5, 20)) +  # Scale circles properly
+  theme_void()
+
+ggsave(filename = "~/Documents/figures/cartoons and schematics/gene_structure_plot_colored_new.pdf", plot = p, width = 20, height = 9.5, limitsize = FALSE)
+
+done_plot <- g %>% insert_left(p, width = 0.3) 
+#done_plot <- g %>% insert_left(flip(p, 11, 21) %>% flip(5,8), width = 0.4) 
+
+print(p)
+
+# Save the figure (Uncomment to save)
+ggsave(filename = "~/Documents/figures/cartoons and schematics/gene_structure_plot_colored.pdf", plot = done_plot, width = 20, height = 9.5, limitsize = FALSE)
+
+#ggsave(filename = "~/Documents/figures/cartoons and schematics/p.pdf", plot = p, width = 18, height = 6, limitsize = FALSE)
+
+# t_dists <- t_dists %>% 
+#   filter(group.a %in% c("HG02165#1#CM087452.1",
+#                         #"HG01505#2#haplotype2-0000149", 
+#                         #"NA20870#1#JBHIJK010000009.1",
+#                         "HG02178#2#CM089945.1",
+#                         "HG00864#2#haplotype2-0000060", 
+#                         #"HG01352#2#haplotype2-0000166", 
+#                         "HG00096#2#haplotype2-0000103",
+#                         "HG00099#1#JBHDWO010000061.1",
+#                         #"HG03732#2#haplotype2-0000081", 
+#                         "HG00140#2#JBHDVZ010000037.1")) %>%
+#   filter(group.b %in% c("HG02165#1#CM087452.1",
+#                         "HG01505#2#haplotype2-0000149", 
+#                         "NA20870#1#JBHIJK010000009.1",
+#                         "HG02178#2#CM089945.1",
+#                         "HG00864#2#haplotype2-0000060", 
+#                         "HG01352#2#haplotype2-0000166", 
+#                         "HG00096#2#haplotype2-0000103",
+#                         "HG00099#1#JBHDWO010000061.1",
+#                         "HG03732#2#haplotype2-0000081", 
+#                         "HG00140#2#JBHDVZ010000037.1"))
+# 
+# t_dists <- t_dists %>% 
+#   filter(group.a %in% c("HG02165#1#CM087452.1",
+#                         "HG02178#2#CM089945.1",
+#                         "HG00864#2#haplotype2-0000060", 
+#                         "HG00096#2#haplotype2-0000103",
+#                         "HG00099#1#JBHDWO010000061.1",
+#                         "HG00140#2#JBHDVZ010000037.1")) %>%
+#  filter(group.b %in% c("HG02165#1#CM087452.1",
+#                         "HG02178#2#CM089945.1",
+#                         "HG00864#2#haplotype2-0000060", 
+#                         "HG00096#2#haplotype2-0000103",
+#                         "HG00099#1#JBHDWO010000061.1",
+#                         "HG00140#2#JBHDVZ010000037.1"))
+```
+
+```{r primates - all representative primates}
+nodeid.tbl_tree <- utils::getFromNamespace("nodeid.tbl_tree", "tidytree")
+rootnode.tbl_tree <- utils::getFromNamespace("rootnode.tbl_tree", "tidytree")
+offspring.tbl_tree <- utils::getFromNamespace("offspring.tbl_tree", "tidytree")
+offspring.tbl_tree_item <- utils::getFromNamespace(".offspring.tbl_tree_item", "tidytree")
+child.tbl_tree <- utils::getFromNamespace("child.tbl_tree", "tidytree")
+parent.tbl_tree <- utils::getFromNamespace("parent.tbl_tree", "tidytree")
+
+t_dists = read.table("~/Documents/datasets/selected_hsa_nonhuman.matrix", header=T,sep="\t",comment.char="",check.names=FALSE)
+
+t_dists <- t_dists %>%
+  filter(group.a %in% c("HG00099#1#JBHDWO010000061.1", #H1
+                         "HG00096#2#haplotype2-0000103", #H2
+                         "AG18355_8_hap2#chr19_hap1_hsa17:11792757-13440106", #bonobo direct
+                         "h2tg000018l:141690580-143346663", #most complete gorilla
+                         "PR01223_hap1#chr19_hap1_hsa17:13841928-15461349", #complete chimp,
+                        "chr19_pat_hsa17:19514981-18094864", #complete bonobo
+                         "chr19_hap1_hsa17:75584353-76896074", #mPonAbe (divergent hap),
+                         "chr19_hap2_hsa17:77931330-79243723", #mPonAbe (non-divergent)
+                         "chr19_hap1_hsa17:78393637-79708793"))%>% #mPonPyg (both haps)
+  filter(group.b %in% c("HG00099#1#JBHDWO010000061.1", #H1
+                         "HG00096#2#haplotype2-0000103", #H2
+                         "AG18355_8_hap2#chr19_hap1_hsa17:11792757-13440106", #bonobo direct
+                         "h2tg000018l:141690580-143346663", #most complete gorilla
+                         "PR01223_hap1#chr19_hap1_hsa17:13841928-15461349", #complete chimp
+                        "chr19_pat_hsa17:19514981-18094864",
+                         "chr19_hap1_hsa17:75584353-76896074", #mPonAbe (divergent hap),
+                         "chr19_hap2_hsa17:77931330-79243723", #mPonAbe (non-divergent)
+                         "chr19_hap1_hsa17:78393637-79708793")) #mPonPyg (both haps)
+        
+#	chr19_hap1_hsa17:75584353-76896074 \ #mPonAbe_hap1
+#	chr19_hap2_hsa17:77931330-79243723 \ #mPonAbe_hap2
+#	chr19_hap1_hsa17:78393637-79708793 \ #mPonPyg_hap1
+#	chr19_hap2_hsa17:74789985-76108916 \ #mPonPyg_hap2
+#	chr4_pat_hsa17x5:46994409-45343234 \ #mGorGor_pri
+#	chr19_mat_hsa17:21531859-20061204  \ #mPanPan_alt
+#	chr4_mat_hsa17x5:47388933-45724282 \ #mGorGor_alt
+#	h1tg000003l:140677735-142329036 \ #GorillaPR00101_hap1
+#	h1tg000024l:27186993-28834223 \ #GorillaPR00053_hap1
+#	h2tg000018l:141690580-143346663  \ #GorillaPR00101_hap2
+#	h2tg000019l:1628409-3279220 \ # GorillaPR00053_hap2
+#	chr19_pat_hsa17:19514981-18094864 \ #mPanPan_pri
+#    PR01223_hap1#chr19_hap1_hsa17:13841928-15461349 \ #oddchimpa
+#    AG18355_8_hap2#chr19_hap1_hsa17:11792757-13440106 \ #inverted bonobo
+#    AG18361_10_hap2#chr19_hap1_hsa17:10145820-11793192 \ #inverted bonobo
+#    HG00099#1#JBHDWO010000061.1 \ #HSA
+#    >./input/selected_hsa_nonhuman.fa
+
+dmat_subset = t_dists %>% 
+  transmute(hap1=group.a,hap2=group.b,dist=jaccard.distance) %>%
+  arrange(hap1,hap2) %>%
+  pivot_wider(names_from = hap2, values_from = dist) %>%
+  column_to_rownames(var="hap1") %>% 
+  as.matrix
+
+c=hclust(as.dist(dmat_subset),method="average")
+struc_phy = as.phylo(c)
+
+rooted_tree <- root(struc_phy, outgroup = "HG00096#2#haplotype2-0000103", resolve.root = TRUE)
+
+sample_sizes <- c(
+  "HG00099#1#JBHDWO010000061.1"= 1,
+  "HG00096#2#haplotype2-0000103"= 14,
+  "AG18355_8_hap2#chr19_hap1_hsa17:11792757-13440106"= 2,
+  "h2tg000018l:141690580-143346663"= 6,
+  "PR01223_hap1#chr19_hap1_hsa17:13841928-15461349"= 29,
+  "chr19_hap1_hsa17:75584353-76896074"= 1,
+  "chr19_pat_hsa17:19514981-18094864"= 26,
+  "chr19_hap2_hsa17:77931330-79243723"= 1,
+  "chr19_hap1_hsa17:78393637-79708793"= 2
+)
+
+# Ensure sample_size is numeric
+tip_data$sample_size <- sample_sizes[tip_data$label]
+
+# Now replace NA with smallest sample size
+tip_data$sample_size[is.na(tip_data$sample_size)] <- min(sample_sizes, na.rm = TRUE)
+
+p <- ggtree(rooted_tree) %<+% tip_data +  # Attach data to tree
+  geom_tippoint(aes(size = sample_size), color = "darkgrey") +  # Circles
+  geom_text(aes(label = sample_size), hjust = 0.375, size = 4) +  # Add sample size next to circles
+  scale_size_continuous(range = c(1, 10)) +  # Scale circles properly
+  theme_void()
+
+p <- flip(p, 12, 13)
+
+g <- ggplot(
+  t %>% dplyr::mutate(contig = factor(contig, levels = rev(seqnames.order))),
+  aes(y = contig)
+) +
+  geom_gene_arrow(
+    mapping = aes(
+      xmin = rel_start2,
+      xmax = rel_end2,
+      fill = bID,
+      forward = !bOrientation
+    ),
+    arrowhead_height = unit(4.8, "mm"),
+    arrowhead_width = unit(4.8, "mm"),
+    arrow_body_height = unit(3.2, "mm"),
+    size = 0.1
+  ) +
+  theme_bw() +
+  scale_fill_manual(values = color_dict) +
+  theme(
+    axis.title.y = element_blank(),
+    #axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "none"
+  )
+
+
+done_plot <- g %>% insert_left(p, width = 0.4)
+
+ggsave(filename = "~/Documents/figures/cartoons and schematics/representative_primates_PANPAN_EXTENDED.pdf", plot = g, width = 12, height = 6, limitsize = FALSE)
+```
+
+```{r primates - all 10 primates}
+nodeid.tbl_tree <- utils::getFromNamespace("nodeid.tbl_tree", "tidytree")
+rootnode.tbl_tree <- utils::getFromNamespace("rootnode.tbl_tree", "tidytree")
+offspring.tbl_tree <- utils::getFromNamespace("offspring.tbl_tree", "tidytree")
+offspring.tbl_tree_item <- utils::getFromNamespace(".offspring.tbl_tree_item", "tidytree")
+child.tbl_tree <- utils::getFromNamespace("child.tbl_tree", "tidytree")
+parent.tbl_tree <- utils::getFromNamespace("parent.tbl_tree", "tidytree")
+#t_dists = read.table("~/Downloads/cleaned_no_chm13.jaccard",header=T,sep="\t",comment.char="",check.names=FALSE) #all 27 unique samples
+
+t_dists = read.table("~/Downloads/all_primates_merged_10.fasta.8fea6cf (1).jaccard",header=T,sep="\t",comment.char="",check.names=FALSE)
+#t_dists = read.table("~/Downloads/6_primates.jaccard",header=T,sep="\t",comment.char="",check.names=FALSE)
+
+t_dists <- t_dists %>%
+  filter(!group.a %in% c("chr19_hap1_hsa17:75584353-76896074",
+                         "chr19_hap2_hsa17:77931330-79243723",
+                         "chr19_hap1_hsa17:78393637-79708793",
+                         "chr19_hap2_hsa17:74789985-76108916")) %>%
+      filter(!group.b %in% c("chr19_hap1_hsa17:75584353-76896074",
+                         "chr19_hap2_hsa17:77931330-79243723",
+                         "chr19_hap1_hsa17:78393637-79708793",
+                         "chr19_hap2_hsa17:74789985-76108916"))
+
+dmat_subset = t_dists %>% 
+  transmute(hap1=group.a,hap2=group.b,dist=jaccard.distance) %>%
+  arrange(hap1,hap2) %>%
+  pivot_wider(names_from = hap2, values_from = dist) %>%
+  column_to_rownames(var="hap1") %>% 
+  as.matrix
+
+c=hclust(as.dist(dmat_subset),method="average")
+struc_phy = as.phylo(c)
+
+#rooted_tree <- root(struc_phy, outgroup = "chr19_hap2_hsa17:74789985-76108916:614005-858791", resolve.root = TRUE)
+#rooted_tree <- root(struc_phy, outgroup = "chr4_mat_hsa17x5:47388933-45724282", resolve.root = TRUE)
+
+sample_labels <- c(
+  "chr19_hap1_hsa17:22562619-21095628" = "mPanTro_hap1",
+  "chr19_hap2_hsa17:20706827-19239702" = "mPanTro_hap2",
+  "chr19_pat_hsa17:19514981-18094864" = "mPanPan_pri",
+  "chr19_hap1_hsa17:75584353-76896074" = "mPonAbe_hap1",
+  "chr19_hap2_hsa17:77931330-79243723" = "mPonAbe_hap2",
+  "chr19_hap1_hsa17:78393637-79708793" = "mPonPyg_hap1",
+  "chr19_hap2_hsa17:74789985-76108916" = "mPonPyg_hap2",
+  "chr4_pat_hsa17x5:46994409-45343234" = "mGorGor_pri",
+  "chr19_mat_hsa17:21531859-20061204" = "mPanPan_alt",
+  "chr4_mat_hsa17x5:47388933-45724282" = "mGorGor_alt"
+)
+
+struc_phy$tip.label <- as.character(struc_phy$tip.label)
+
+struc_phy$tip.label <- sample_labels[struc_phy$tip.label]
+
+p <- ggtree(struc_phy)
+
+#%>% flip(9,10)
+
+done_plot <- g %>% insert_left(p, width = 0.3) 
+```
+
+```{r primates bundle 0 - PGGB}
+nodeid.tbl_tree <- utils::getFromNamespace("nodeid.tbl_tree", "tidytree")
+rootnode.tbl_tree <- utils::getFromNamespace("rootnode.tbl_tree", "tidytree")
+offspring.tbl_tree <- utils::getFromNamespace("offspring.tbl_tree", "tidytree")
+offspring.tbl_tree_item <- utils::getFromNamespace(".offspring.tbl_tree_item", "tidytree")
+child.tbl_tree <- utils::getFromNamespace("child.tbl_tree", "tidytree")
+parent.tbl_tree <- utils::getFromNamespace("parent.tbl_tree", "tidytree")
+#t_dists = read.table("~/Downloads/cleaned_no_chm13.jaccard",header=T,sep="\t",comment.char="",check.names=FALSE) #all 27 unique samples
+
+t_dists = read.table("~/Downloads/merged_bundle0.fasta.8fea6cf.11fba48.d00f0f2.smooth.final (2).jaccard",header=T,sep="\t",comment.char="",check.names=FALSE)
+
+# t_dists <- t_dists %>%
+#   filter(group.a %in% c("chr19_hap2_hsa17:20706827-19239702:492360-891893",
+#                         "chr4_pat_hsa17x5:46994409-45343234:474627-882035",
+#                         "chr19_mat_hsa17:21484106-20061204:446032-863509")) %>%
+#   filter(group.b %in% c("chr19_hap2_hsa17:20706827-19239702:492360-891893",
+#                         "chr4_pat_hsa17x5:46994409-45343234:474627-882035",
+#                         "chr19_mat_hsa17:21484106-20061204:446032-863509"))
+
+dmat_subset = t_dists %>% 
+  transmute(hap1=group.a,hap2=group.b,dist=jaccard.distance) %>%
+  arrange(hap1,hap2) %>%
+  pivot_wider(names_from = hap2, values_from = dist) %>%
+  column_to_rownames(var="hap1") %>% 
+  as.matrix
+
+c=hclust(as.dist(dmat_subset),method="average")
+struc_phy = as.phylo(c)
+
+rooted_tree <- root(struc_phy, outgroup = "chr19_hap2_hsa17:74789985-76108916:614005-858791", resolve.root = TRUE)
+#rooted_tree <- root(struc_phy, outgroup = "chr4_pat_hsa17x5:46994409-45343234:474627-882035", resolve.root = TRUE)
+
+sample_labels <- c(
+  "chr19_hap1_hsa17:22562619-21095628:491990-891609" = "mPanTro_hap1",
+  #"chr19_hap2_hsa17:20706827-19239702:492360-891893" = "mPanTro_hap2",
+  "chr19_hap2_hsa17:20706827-19239702:492360-891893" = "Pan troglodytes",
+  "chr19_pat_hsa17:32381006-18094864:13312009-13724741" = "mPanPan_pri",
+  "chr19_hap2_hsa17:77931330-79243723:610252-856397" = "mPonAbe_hap2",
+  "chr19_hap1_hsa17:78393637-79708793:615200-882525" = "mPonPyg_hap1",
+  "chr19_hap2_hsa17:74789985-76108916:614005-858791" = "mPonPyg_hap2",
+  "chr4_pat_hsa17x5:46994409-45343234:474627-882035" = "Gorilla gorilla",
+  #"chr4_pat_hsa17x5:46994409-45343234:474627-882035" = "mGorGor_pri",
+  #"chr19_mat_hsa17:21484106-20061204:446032-863509" = "mPanPan_alt",
+  "chr19_mat_hsa17:21484106-20061204:446032-863509" = "Pan paniscus",
+  "CM089483.1:45294200-47197380:739114-1188992" = "H2",
+  "chr17:46488384-46953983" = "H1_chm13",
+  "CM089673.1:46713933-48497812:367204-832870" = "H1D")
+
+struc_phy$tip.label <- as.character(struc_phy$tip.label)
+
+struc_phy$tip.label <- sample_labels[struc_phy$tip.label]
+
+p <- ggtree(struc_phy)
+
+done_plot <- g %>% insert_left(p, width = 0.3) 
+
+#ggsave(filename = "~/Documents/figures/cartoons and schematics/representative_primates.pdf", plot = done_plot, width = 6, height = 2, limitsize = FALSE)
+
+```
+
+```{r primates bundle 2 - PGGB}
+nodeid.tbl_tree <- utils::getFromNamespace("nodeid.tbl_tree", "tidytree")
+rootnode.tbl_tree <- utils::getFromNamespace("rootnode.tbl_tree", "tidytree")
+offspring.tbl_tree <- utils::getFromNamespace("offspring.tbl_tree", "tidytree")
+offspring.tbl_tree_item <- utils::getFromNamespace(".offspring.tbl_tree_item", "tidytree")
+child.tbl_tree <- utils::getFromNamespace("child.tbl_tree", "tidytree")
+parent.tbl_tree <- utils::getFromNamespace("parent.tbl_tree", "tidytree")
+#t_dists = read.table("~/Downloads/cleaned_no_chm13.jaccard",header=T,sep="\t",comment.char="",check.names=FALSE) #all 27 unique samples
+t_dists = read.table("~/Downloads/merged_bundle2.fasta.8fea6cf.11fba48.d00f0f2.smooth.final.jaccard",header=T,sep="\t",comment.char="",check.names=FALSE)
+
+dmat_subset = t_dists %>% 
+  transmute(hap1=group.a,hap2=group.b,dist=jaccard.distance) %>%
+  arrange(hap1,hap2) %>%
+  pivot_wider(names_from = hap2, values_from = dist) %>%
+  column_to_rownames(var="hap1") %>% 
+  as.matrix
+
+c=hclust(as.dist(dmat_subset),method="average")
+struc_phy = as.phylo(c)
+
+#rooted_tree <- root(struc_phy, outgroup = "chr19_hap2_hsa17:74789985-76108916:614005-858791", resolve.root = TRUE)
+
+sample_labels <- c(
+  "chr19_hap1_hsa17:22562619-21095628:13775-218356" = "mPanTro_hap1",
+  "chr19_hap2_hsa17:20706827-19239702:13771-218361" = "mPanTro_hap2",
+  "chr19_pat_hsa17:32381006-18094864:12831992-13046371" = "mPanPan_pri",
+  "chr19_hap2_hsa17:77931330-79243723:34715-121291" = "mPonAbe_hap2",
+  "chr19_hap1_hsa17:78393637-79708793:34727-121319" = "mPonPyg_hap1",
+  "chr19_hap2_hsa17:74789985-76108916:34727-121329" = "mPonPyg_hap2",
+  "chr4_pat_hsa17x5:46994409-45343234:63684-199134" = "mGorGor_pri",
+  "chr19_mat_hsa17:21484106-20061204:13122-146033" = "mPanPan_alt",
+  "CM089483.1:45294200-47197380:8826-217433" = "H2",
+  "chr17:46135002-46357410" = "H1_chm13",
+  "CM089673.1:46713933-48497812:8826-225792" = "H1D",
+  "chr19_hap1_hsa17:75584353-76896074:34685-121208" = "mPonAbe_hap2")
+
+struc_phy$tip.label <- as.character(struc_phy$tip.label)
+
+struc_phy$tip.label <- sample_labels[struc_phy$tip.label]
+
+p <- ggtree(struc_phy) +
+  geom_tiplab(size = 2)
+
+print(p)
+
+ggsave(filename = "~/Documents/figures/cartoons and schematics/tree_on_bundle2.pdf", plot = p, width = 18, height = 6, limitsize = FALSE)
+
+
+```
+
+```{r primates bundle 2 - iqtree}
+library(ape)
+
+tree <- read.tree("~/Downloads/merged_bundle2_aligned.fasta.treefile")  # Replace with your actual file name
+
+sample_labels <- c(
+  "chr19_hap1_hsa17_22562619-21095628_13775-218356" = "mPanTro_hap1",
+  "chr19_hap2_hsa17_20706827-19239702_13771-218361" = "mPanTro_hap2",
+  "chr19_pat_hsa17_32381006-18094864_12831992-13046371" = "mPanPan_pri",
+  "chr19_hap2_hsa17_77931330-79243723_34715-121291" = "mPonAbe_hap2",
+  "chr19_hap1_hsa17_78393637-79708793_34727-121319" = "mPonPyg_hap1",
+  "chr19_hap2_hsa17_74789985-76108916_34727-121329" = "mPonPyg_hap2",
+  "chr4_pat_hsa17x5_46994409-45343234_63684-199134" = "mGorGor_pri",
+  "chr19_mat_hsa17_21484106-20061204_13122-146033" = "mPanPan_alt",
+  "CM089483.1_45294200-47197380_8826-217433" = "H2",
+  "chr17_46135002-46357410" = "H1_chm13",
+  "CM089673.1_46713933-48497812_8826-225792" = "H1D",
+  "chr19_hap1_hsa17_75584353-76896074_34685-121208" = "mPonAbe_hap1")
+
+# Rename tree tip labels using the mapping in sample_labels
+tree$tip.label <- sample_labels[tree$tip.label]
+
+tree_rooted <- root(tree, outgroup = "mPonAbe_hap2", resolve.root = TRUE)
+
+# Plot the tree
+plot(tree_rooted, show.tip.label = TRUE, main = "bundle2")
+
+```
+
+```{r primates bundle 1 - iqtree}
+library(ape)
+
+tree <- read.tree("~/Downloads/merged_bundle1_aligned.fasta.treefile")  # Replace with your actual file name
+
+sample_labels <- c(
+  "chr19_hap1_hsa17_22562619-21095628_1258388-1447752" = "mPanTro_hap1",
+  "chr19_hap2_hsa17_20706827-19239702_1258523-1466685" = "mPanTro_hap2",
+  "chr19_pat_hsa17_32381006-18094864_14083366-14285702" = "mPanPan_pri",
+  "chr19_hap2_hsa17_77931330-79243723_1137138-1310154" = "mPonAbe_hap2",
+  "chr4_pat_hsa17x5_46994409-45343234_1455474-1627107" = "mGorGor_pri",
+  "chr19_mat_hsa17_21484106-20061204_1219748-1422462" = "mPanPan_alt",
+  "CM089483.1_45294200-47197380_1683459-1902750" = "H2",
+  "chr17_47563641-47854154" = "H1_chm13",
+  "CM089673.1_46713933-48497812_1564195-1783449" = "H1D",
+  "chr19_hap1_hsa17_75584353-76896074_1136685-1309476" = "mPonAbe_hap1")
+
+# Rename tree tip labels using the mapping in sample_labels
+tree$tip.label <- sample_labels[tree$tip.label]
+
+tree_rooted <- root(tree, outgroup = c("mPonAbe_hap2", "mPonAbe_hap1"), resolve.root = TRUE)
+
+# Plot the tree
+plot(tree_rooted, show.tip.label = TRUE, main = "bundle1")
+
+```
+
+```{r primates bundle 0 - iqtree}
+library(ape)
+
+tree <- read.tree("~/Downloads/merged_bundle0_aligned.fasta.treefile")  # Replace with your actual file name
+
+sample_labels <- c(
+  "chr19_hap1_hsa17_22562619-21095628_491990-891609" = "mPanTro_hap1",
+  "chr19_hap2_hsa17_20706827-19239702_492360-891893" = "mPanTro_hap2",
+  "chr19_pat_hsa17_32381006-18094864_13312009-13724741" = "mPanPan_pri",
+  "chr19_hap2_hsa17_77931330-79243723_610252-856397" = "mPonAbe_hap2",
+  "chr19_hap1_hsa17_78393637-79708793_615200-882525" = "mPonPyg_hap1",
+  "chr19_hap2_hsa17_74789985-76108916_614005-858791" = "mPonPyg_hap2",
+  "chr4_pat_hsa17x5_46994409-45343234_474627-882035" = "mGorGor_pri",
+  "chr19_mat_hsa17_21484106-20061204_446032-863509" = "mPanPan_alt",
+  "CM089483.1_45294200-47197380_739114-1188992" = "H2",
+  "chr17_46488384-46953983" = "H1_chm13",
+  "CM089673.1_46713933-48497812_367204-832870" = "H1D")
+
+# Rename tree tip labels using the mapping in sample_labels
+tree$tip.label <- sample_labels[tree$tip.label]
+
+tree_rooted <- root(tree, outgroup = "mPonAbe_hap2", resolve.root = TRUE)
+
+# Plot the tree
+plot(tree_rooted, show.tip.label = TRUE, main = "bundle0")
+
+```
+
+```{r primates bundle 0 - sliding window 2}
+library(ape)
+
+# Define file paths
+file_paths <- list.files(path = "~/Downloads/", 
+                         pattern = "chr17_46488384-46953983_sliding_.*_ALIGNED.fa.treefile", 
+                         full.names = TRUE)
+
+# Sort file paths to maintain order
+file_paths <- sort(file_paths)
+
+# Create an output directory
+output_dir <- "~/Documents/figures/trees/"
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir)
+}
+
+# Loop through files
+for (i in seq_along(file_paths)) {
+  # Read the tree
+  tree <- read.tree(file_paths[i])
+  
+  # Update tip labels
+  tree$tip.label <- ifelse(
+    tree$tip.label %in% names(sample_labels), 
+    sample_labels[tree$tip.label], 
+    tree$tip.label  
+  )
+
+  # Assign H2 and H1D labels
+  tree$tip.label[grep("CM089483.1", tree$tip.label)] <- "H2"
+  tree$tip.label[grep("CM089673.1", tree$tip.label)] <- "H1D"
+
+  # Root the tree
+  tree_rooted <- root(tree, outgroup = "mPonAbe.hap2", resolve.root = TRUE)
+
+  # Define output file names
+  png_filename <- paste0(output_dir, "sliding_window_", i, ".png")
+  pdf_filename <- paste0(output_dir, "sliding_window_", i, ".pdf")
+
+  # Save as PNG
+  png(png_filename, width = 1200, height = 800, res = 150)
+  plot(tree_rooted, show.tip.label = TRUE, 
+       main = paste("sliding_window_", i, sep = ""))
+  dev.off()
+
+  # Save as PDF
+  pdf(pdf_filename, width = 10, height = 8)
+  plot(tree_rooted, show.tip.label = TRUE, 
+       main = paste("sliding_window_", i, sep = ""))
+  dev.off()
+}
+```
+
+```{r}
+# Make sure start and end are character
+alignment$qname <- as.character(alignment$qname)
+alignment$start <- as.character(alignment$qstart)
+alignment$end <- as.character(alignment$qend)
+alignment$sample <- as.character(alignment$sample)
+
+# Build names like "qname_start-end"
+names_vector <- paste0(alignment$qname, "_", alignment$qstart, "-", alignment$qend)
+
+# Build the named vector
+sample_labels <- setNames(alignment$sample, names_vector)
+
+library(ape)
+
+# Define file paths
+file_paths <- list.files(path = "~/Downloads/treefiles 5/",
+                         pattern = "*.treefile",
+                         full.names = TRUE)
+
+# Sort file paths to maintain order
+file_paths <- sort(file_paths)
+
+# Create an output directory
+output_dir <- "~/Documents/figures/trees/bundle5/"
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
+# OPTIONAL: Define sample_labels mapping (make sure to fill this in)
+# Example: sample_labels <- c("sample1" = "label1", "sample2" = "label2", ...)
+# sample_labels <- ...
+
+# Loop through files
+for (i in seq_along(file_paths)) {
+  message("Processing file ", i, " of ", length(file_paths), ": ", basename(file_paths[i]))
+
+  # Read the tree
+  tree <- read.tree(file_paths[i])
+
+  # Update tip labels if sample_labels exists
+  if (exists("sample_labels")) {
+    tree$tip.label <- ifelse(
+      tree$tip.label %in% names(sample_labels),
+      sample_labels[tree$tip.label],
+      tree$tip.label
+    )
+  }
+
+  # Assign H2 and H1D labels
+  tree$tip.label[grep("CM089483.1", tree$tip.label)] <- "H2"
+  tree$tip.label[grep("CM089673.1", tree$tip.label)] <- "H1D"
+  tree$tip.label[grep("chr19_hap2_hsa17_75", tree$tip.label)] <- "orangutan"
+  
+  # Try to root on any of the preferred outgroups
+  #outgroups <- c("mPonAbe.hap1", "mPonAbe.hap2", "mPonPyg.hap1", "mPonPyg.hap2")
+  outgroups <- c("orangutan")
+  available_outgroup <- outgroups[outgroups %in% tree$tip.label][1]
+
+  # Root if an outgroup is available
+  if (!is.na(available_outgroup)) {
+    tree_rooted <- root(tree, outgroup = available_outgroup, resolve.root = TRUE)
+  } else {
+    tree_rooted <- tree  # Leave unrooted
+  }
+
+  # Define padded index (e.g., 001, 002, ...)
+  padded_index <- sprintf("%02d", i)
+
+  # Define output file names
+  png_filename <- file.path(output_dir, paste0("sliding_window_", padded_index, ".png"))
+  pdf_filename <- file.path(output_dir, paste0("sliding_window_", padded_index, ".pdf"))
+
+  # Save as PNG
+  png(png_filename, width = 1200, height = 800, res = 150)
+  plot(tree_rooted, show.tip.label = TRUE,
+       main = paste("Sliding Window", padded_index))
+  dev.off()
+
+  # Save as PDF
+  pdf(pdf_filename, width = 10, height = 8)
+  plot(tree_rooted, show.tip.label = TRUE,
+       main = paste("Sliding Window", padded_index))
+  dev.off()
+}
+```
+
+```{r manually accounting for tree topology}
+library(ggplot2)
+
+manually_accounting_tree_topology <- read.csv("~/Documents/figures/trees/manually_accounting_tree_topology.csv")
+
+color_key <- c(
+  "1" = "#dd4124",
+  "2" = "#ed8b00",
+  "3" = "#edd746",
+  #"4" = "#00496f"
+  "4" = "white"
+)
+
+legend_labels <- c(
+  "1" = "25%: human as outgroup to gorilla and pan",
+  "2" = "48.91%: gorilla as outgroup to human and pan",
+  "3" = "18.48%: pan as outgroup to human and gorilla",
+  "4" = "7.61%: other (missing gorillas, a polytomy, can't figure out the tree)"
+)
+
+legend_labels <- c(
+  "1" = "human as outgroup to gorilla and pan",
+  "2" = "gorilla as outgroup to human and pan",
+  "3" = "pan as outgroup to human and gorilla",
+  "4" = " "
+)
+
+plot_toplogy <- ggplot(manually_accounting_tree_topology, aes(x = as.numeric(chm13_start), y = 1, fill = as.character(topology))) +
+  geom_tile() +
+  scale_fill_manual(values = color_key, labels = legend_labels) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid = element_blank()
+    #axis.text.x = element_text(angle = 0, hjust = 1)
+  ) +
+  #scale_x_discrete(breaks = function(x) x[seq(1, length(x), by = 10)]) +  # only show every 5th tick
+  labs(
+    #x = "chromosome 17 genomic position (CHM13)",
+    fill = "topology"
+  )
+
+gene_ranges
+
+freq_table <- manually_accounting_tree_topology %>%
+  group_by(bundle) %>%
+  count(topology) %>%
+  mutate(frequency = n / sum(n))
+
+
+combined_plot <- plot_toplogy / g + plot_layout(heights = c(3, 5))
+
+
+ggsave("~/Documents/figures/cartoons and schematics/topology.pdf", plot = combined_plot, width = 15, height = 5)
+```
+
+```{r dated tree bundle 0}
+tip_renames <- c(
+  "chr19_mat_hsa17_20582245-21048627" = "mPanPan.alt",
+  "chr19_pat_hsa17_18617913-19079559" = "mPanPan.pri",
+  "chr19_hap1_hsa17_21614462-22081205" = "mPanTro.hap1",
+  "chr19_hap2_hsa17_19758401-20225026" = "mPanTro.hap2",
+  "chr19_hap1_hsa17_79350798-78885094" = "mPonPyg.hap1",
+  "chr19_hap2_hsa17_75746872-75280290" = "mPonPyg.hap2",
+  "chr19_hap1_hsa17_76538256-76070732" = "mPonAbe.hap1",
+  "chr19_hap2_hsa17_78885731-78418041" = "mPonAbe.hap2",
+  "h1tg000024l_28122386-27658286" = "GorillaPR00053.hap1",
+  "h2tg000019l_2567491-2103522" = "GorillaPR00053.hap2",
+  "chr4_mat_hsa17x5_46436046-46899991" = "mGorGor.alt",
+  "chr4_pat_hsa17x5_46055126-46519286" = "mGorGor.pri",
+  "CM089673.1_46713933-48497812_367203-832266" = "H1D",
+  "CM089483.1_45294200-47197380_1195173-728614" = "H2",
+  "chr17_46488383-46953383" = "chm13_H1",
+  "h1tg000003l_141617000-141152858" = "GorillaPR00101.hap1",
+  "h2tg000018l_142635109-142169193" = "GorillaPR00101.hap2",
+  "AG18355_8_hap2_chr19_hap1_hsa17_11792757-13440106_938283-1405563" = "mPanPan.direct.1",
+  "AG18361_10_hap2_chr19_hap1_hsa17_10145820-11793192_938295-1405589" = "mPanPan.direct.2"
+)
+
+#bundle0_tree <- str_c("~/Downloads/bundle0_aligned_outgroup.timetree (3).nex") %>%
+  #read.nexus()
+
+#This is to read bundle0
+bundle0_tree <- str_c("~/Downloads/bundle0_aligned_outgroup_BONOBO.timetree.nex") %>%
+  read.nexus()
+
+#This is to read the most simple timetree
+#bundle0_tree <- str_c("~/Downloads/bundle0_window08_09_ALL_SAMPLES.timetree.nex") %>%
+  #read.nexus()
+
+bundle0_tree$tip.label <- tip_renames[bundle0_tree$tip.label]
+
+x_max <- max(ggtree::ggtree(bundle0_tree)$data$x)
+x_max_mya <- x_max / 1e6
+
+#breaks_vec <- pretty(c(0, x_max))
+
+breaks_mya <- seq(0, x_max_mya, by = 0.5)  # adjust by=0.5 if needed for finer granularity
+
+
+primate_tree <- ggtree(bundle0_tree) +
+  #geom_text2(aes(label = label), hjust = -0.3, size = 2) +
+  theme_tree2() +
+  ggtitle("dated tree: bundle0") +
+  scale_x_continuous(
+    name = "time (mya)",
+    #breaks = breaks_vec,
+    breaks = breaks_mya * 1e6,  # actual values in years
+    #labels = rev(breaks_vec / 1e6)
+    labels = rev(breaks_mya)
+  )
+
+primate_tree
+#ggsave("~/Documents/figures/trees/bundle_0_dated_bonobo.pdf", primate_tree, width=6, height=6, units="in")
+ggsave("~/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/bundle_0_dated_inverted_chimp.pdf", primate_tree, width=9, height=6, units="in")
+
+
+mrca_node <- getMRCA(bundle0_tree, c("mPanPan.direct.1", "mPanPan.pri"))
+node_heights <- node.depth.edgelength(bundle0_tree)
+split_time <- (max(node_heights) - node_heights[mrca_node])/1e6
+cat("Estimated split time:", split_time, "mya\n")
+
+# Get all tip labels
+tips <- bundle0_tree$tip.label
+
+# Get node heights (distance from root)
+node_heights <- node.depth.edgelength(bundle0_tree)
+max_height <- max(node_heights)
+
+# Initialize matrix to store split times
+split_times <- matrix(NA, nrow = length(tips), ncol = length(tips),
+                      dimnames = list(tips, tips))
+
+# Loop over all unique pairs of tips
+for (i in 1:(length(tips)-1)) {
+  for (j in (i+1):length(tips)) {
+    tip1 <- tips[i]
+    tip2 <- tips[j]
+    mrca_node <- getMRCA(bundle0_tree, c(tip1, tip2))
+    split_time <- (max_height - node_heights[mrca_node]) / 1e6
+    split_times[tip1, tip2] <- split_time
+    split_times[tip2, tip1] <- split_time  # symmetric
+  }
+}
+
+# View result
+head(split_times[, 1:5])  # Show a few columns for inspection
+```
+
+```{r human windows}
+
+summary_3_5 <- t %>%
+  filter(bID %in% c(3, 5)) %>%     # Keep only rows where bID is 3 or 5
+  group_by(contig, bID) %>%       # Group by sample and bID
+  summarize(count = n(), .groups = "drop") %>%  # Count number of rows (copies)
+  pivot_wider(names_from = bID, values_from = count, values_fill = 0, names_prefix = "bID_") %>%
+  mutate(contig_copy = contig) %>%
+  separate(contig_copy, into = c("sample_name", "haplotype_num", "qname"), sep = "#")
+
+#alignment_extracted <- alignment %>%
+alignment_extracted <- alignment_merged %>%
+  mutate(
+    filename = basename(genome_path),
+    sample_name = case_when(
+      str_detect(filename, "^(HG|NA)[0-9]{5}") ~ str_extract(filename, "^(HG|NA)[0-9]{5}"),
+      str_detect(filename, "_(HG|NA)[0-9]{5}_hap[12]") ~ str_extract(filename, "_(HG|NA)[0-9]{5}_hap[12]") %>%
+        str_remove("_hap[12]") %>%
+        str_remove("^_"),
+      TRUE ~ NA_character_
+    ),
+    haplotype = str_extract(sample, "_hap[12]") %>%
+                str_remove("_hap"),
+    qname = word(qname, -1),  # extract last word (e.g., "haplotype1-0000009")
+    contig = str_c(sample_name, haplotype, qname, sep = "#"),
+    #tree_tip_label = str_c(qname, paste0(start, "-", end), sep = "_")
+    tree_tip_label = str_c(qname, paste0(merged_qstart, "-", merged_qend), sep = "_")
+  )
+
+temp_merged_alignment_3_5 <- merge(alignment_extracted, summary_3_5, by.x = c("qname", "sample_name", "contig"), by.y = c("qname", "sample_name", "contig")) 
+
+merged_alignment_3_5 <- temp_merged_alignment_3_5 %>% dplyr::select(contig, tree_tip_label, bID_3, bID_5) %>% distinct()
+```
+
+```{r}
+# right most flank of bundle 0, colored by copies of KANSL1
+# Read the tree
+#tree <- read.tree("~/Downloads/treefile/bundle0_window04_aligned.fasta.treefile")
+#tree <- read.tree("~/Documents/datasets/treefiles/bundle0_window09.treefile")
+#tree <- read.tree("~/Downloads/bundle0_window09_subset.treefile")
+#tree <- read.tree("~/Downloads/bundle0_window09_subset_subset.treefile")
+tree <- read.tree("~/Downloads/bundle0_window08_09_ALL_SAMPLES.treefile")
+
+drop_dupes <- function(tree, thres = 1e-4) {
+  # Identify edges leading to tips (i.e., the leaves)
+  tips <- which(tree$edge[, 2] %in% 1:Ntip(tree))
+  
+  # Find those whose edge length is below the threshold
+  to_drop <- tree$edge.length[tips] < thres
+  
+  # Drop those tips from the tree
+  drop.tip(tree, tree$tip.label[to_drop])
+}
+
+#tree_simplified <- drop_dupes(tree)
+
+tree_simplified <- keep.tip(tree, c("CM090071.1_47043158-46943577", "CM089673.1_47431225-47531196", "CM087413.1_46832403-46932392", "chr19_hap1_hsa17_21966255-22066201"))
+  
+
+tree <- tree_simplified
+
+tree_tips <- tibble(label = tree$tip.label) %>%
+  mutate(
+    #qname = str_extract(label, "^haplotype[0-9]+-[0-9]+"),
+    qname = str_extract(label, "^[^_]+"),
+    start = str_extract(label, "_[0-9]+") %>% str_remove("_"),
+    end = str_extract(label, "-[0-9]+$") %>% str_remove("-"),
+    tree_tip_label = str_c(qname, paste0(start, "-", end), sep = "_")
+  )
+
+tree_data <- left_join(tree_tips, merged_alignment_3_5, by = "tree_tip_label")
+
+tree_data <- merge(tree_tips, merged_alignment_3_5, by.x = "label", by.y = "tree_tip_label") %>%
+    dplyr::mutate(node_name = paste0(bID_3, "_", bID_5))
+
+# Midpoint root the tree
+tree_rooted <- midpoint.root(tree)
+
+tree_data_df <- tree_data %>% dplyr::select(tree_tip_label,node_name)
+
+blocks_df <- tree_data %>%
+  filter(!is.na(label)) %>%
+  filter(!is.na(label)) %>%
+  dplyr::select(label, bID_3, bID_5) %>%
+  pivot_longer(cols = c(bID_3, bID_5), names_to = "type", values_to = "count") %>%
+  filter(!is.na(count)) %>%
+  uncount(count) %>%
+  group_by(label, type) %>%
+  mutate(index = row_number()) %>%
+  ungroup()
+
+block_shapes <- tree_data %>%
+  filter(!is.na(bID_3)) %>%
+  filter(!is.na(label)) %>%
+  select(label, bID_3, bID_5) %>%
+  pivot_longer(cols = c(bID_3, bID_5), names_to = "type", values_to = "count") %>%
+  filter(!is.na(count)) %>%
+  mutate(type = factor(type, levels = c("bID_3", "bID_5"))) %>%
+  uncount(count) %>%
+  arrange(label, type) %>%
+  group_by(label, type) %>%
+  mutate(index = row_number()) %>%
+  ungroup() %>%
+  mutate(
+    xpos = if_else(
+      type == "bID_3",
+      (index - 1) * 0.002,         # regular spacing for bID_3
+      0.004 + (index - 1) * 0.002   # fixed starting point for bID_5
+    )
+  )
+
+shape_values <- c("bID_3" = 22, "bID_5" = 23)  # square, triangle
+color_values <- c("bID_3" = "#C4C856", "bID_5" = "#00496F")
+
+block_plot <- block_shapes %>%
+  mutate(label = factor(label, levels = rev(tree_data$label[!is.na(tree_data$label)]))) %>%
+  ggplot(aes(x = xpos, y = label, shape = type, fill = type)) +
+  geom_point(size = 0.5, color = "black") +
+  scale_shape_manual(values = c("bID_3" = 22, "bID_5" = 22)) +  # square + downward triangle
+  scale_fill_manual(values = color_values) +
+  theme_void() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "left"
+  )
+
+# Now plot the rooted tree
+p <- ggtree(tree) %<+% tree_data +
+  geom_tiplab(size = 2.5)
+  #geom_tippoint(aes(color = factor(bID_3)), size = 1.5, shape = 16) +
+  #geom_tippoint(aes(color = factor(bID_5)), size = 1.5, shape = 16) +
+  #theme_tree2() +
+  #scale_color_manual(
+    #name = "bID_3 copies",
+    #values = c(
+      #"0" = "gray80",
+      #"1" = "#C4C856",  # light green
+      #"2" = "#00496F"   # dark blue
+    #)
+  #)
+
+print(p)
+
+library(aplot)
+library(patchwork)
+
+structure_tree_with_blocks <- block_plot %>%
+  aplot::insert_left(p, width = 3)  # widen if needed
+
+structure_tree_with_blocks <- block_plot %>%
+  aplot::insert_left(primate_tree, width = 3)  # widen if needed
+
+
+structure_tree_with_blocks
+
+fn_out = "~/Documents/figures/HGSVC_HPRC_tree_ALL_SAMPLES_DATED.pdf"
+pdf(fn_out, width=5, height=12)
+print(structure_tree_with_blocks)
+dev.off()
+```
+
+```{r}
+# left most flank of bundle 1, colored by copies of NSF
+# Read the tree
+tree <- read.tree("~/Downloads/treefiles 4/bundle2/window47_aligned.fasta.treefile")
+
+# Create a tibble with tip labels and extract qname
+tree_tips <- tibble(label = tree$tip.label) %>%
+  mutate(
+    qname = str_extract(label, "^haplotype[0-9]+-[0-9]+"),
+    start = str_extract(label, "_[0-9]+") %>% str_remove("_"),
+    end = str_extract(label, "-[0-9]+$") %>% str_remove("-"),
+    tree_tip_label = str_c(qname, paste0(start, "-", end), sep = "_")
+  )
+
+# Join with your metadata
+tree_data <- tree_tips %>%
+  left_join(merged_alignment_3_5, by = "tree_tip_label")
+
+tree_data <- merge(tree_tips, merged_alignment_3_5, by.x = "label", by.y = "tree_tip_label")
+
+# Option 1: find out the node number, and figure out which node should be the root, and then remove the chimp 
+# Option 2: set the x-limit into something that excludes the chimp (easier way to show the topology)
+# Option 3: midpoint root with the chimp to adjust the topology
+# Option 4: Output a plot that is super wide, and cut off the chimp part... 
+# Option 5: Chimp is too diverged or humans too homogenous 
+
+# right most flank of bundle 0, colored by copies of 
+p <- ggtree(tree) %<+% tree_data + 
+  # geom_tiplab(aes(label = sample_name), size = 2.5, hjust = -0.1) + 
+  geom_tippoint(aes(color = factor(bID_5)), size = 1.5, shape = 16) + 
+  theme_tree2() +
+  scale_color_manual(
+    name = "bID_5 copies",
+    values = c(
+      "0" = "gray80",
+      "1" = "#C4C856",  # light green
+      "2" = "#00496F",   # dark blue,
+      "3" = "pink", 
+      "4" = "yellow"
+    )
+  )
+
+print(p)
+
+```
+
+```{r printed a for loop for all the different bundles}
+summary_3_5 <- t %>%
+  dplyr::select(contig, bOrientation, bID) %>%
+  filter(bID %in% c(3, 5)) %>%    # Keep only rows where bID is 3 or 5
+  group_by(contig, bID) %>%       # Group by sample and bID
+  summarize(count = n(), .groups = "drop") %>%  # Count number of rows (copies)
+  pivot_wider(names_from = bID, values_from = count, values_fill = 0, names_prefix = "bID_") %>%
+  mutate(
+    contig_copy = contig
+  ) %>%
+  separate(
+    contig_copy, into = c("sample_name", "haplotype_num", "qname"), sep = "#"
+  ) %>%
+  mutate(
+    bOrientation_status = case_when(
+      bID_3 == 2 & bID_5 == 2 ~ "INVERTED",
+      TRUE ~ "DIRECT"
+    )
+  ) %>%
+  arrange(desc(contig == c("HG00232#1#CM089999.1", "HG03732#2#haplotype2-0000081", "HG00099#1#JBHDWO010000061.1",
+                     "HG00864#2#haplotype2-0000060", "HG01352#2#haplotype2-0000166",
+                     "HG01505#2#haplotype2-0000149",
+                     "HG02178#2#CM089945.1",
+                     "HG00096#2#haplotype2-0000103")))
+
+write.table(summary_3_5, file = "~/Documents/datasets/summary_3_5_representative.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+
+
+alignment_extracted <- alignment %>%
+  mutate(
+    filename = basename(genome_path),
+    sample_name = case_when(
+      str_detect(filename, "^(HG|NA)[0-9]{5}") ~ str_extract(filename, "^(HG|NA)[0-9]{5}"),
+      str_detect(filename, "_(HG|NA)[0-9]{5}_hap[12]") ~ str_extract(filename, "_(HG|NA)[0-9]{5}_hap[12]") %>%
+        str_remove("_hap[12]") %>%
+        str_remove("^_"),
+      TRUE ~ NA_character_
+    ),
+    haplotype = str_extract(sample, "_hap[12]") %>%
+                str_remove("_hap"),
+    contig = str_c(sample_name, haplotype, qname, sep = "#"),
+    tree_tip_label = str_c(qname, paste0(start, "-", end), sep = "_")
+  )
+
+temp_merged_alignment_3_5 <- merge(alignment_extracted, summary_3_5, by.x = c("qname", "sample_name", "contig"), by.y = c("qname", "sample_name", "contig")) 
+
+merged_alignment_3_5 <- temp_merged_alignment_3_5 %>% dplyr::select(contig, tree_tip_label, bID_3, bID_5) %>% distinct()
+
+
+# right most flank of bundle 0, colored by copies of KANSL1
+# Read the tree
+tree_files <- sprintf("/Users/samvardhinisridharan/Downloads/treefiles 4/bundle2/window%02d_aligned.fasta.treefile", 1:57)
+
+pdf("~/Documents/figures/trees/bunde2_bID5.pdf", width = 8, height = 10)
+
+for(file in tree_files){
+  tree <- read.tree(file)
+  
+  window_label <- str_extract(file, "window[0-9]+")
+
+# Create a tibble with tip labels and extract qname
+  tree_tips <- tibble(label = tree$tip.label) %>%
+    mutate(
+      qname = str_extract(label, "^haplotype[0-9]+-[0-9]+"),
+      start = str_extract(label, "_[0-9]+") %>% str_remove("_"),
+      end = str_extract(label, "-[0-9]+$") %>% str_remove("-"),
+      tree_tip_label = str_c(qname, paste0(start, "-", end), sep = "_")
+    )
+
+# Join with your metadata
+  tree_data <- tree_tips %>%
+    left_join(merged_alignment_3_5, by = "tree_tip_label")
+
+  tree_data <- merge(tree_tips, merged_alignment_3_5, by.x = "label", by.y = "tree_tip_label")
+
+# right most flank of bundle 0, colored by copies of 
+  p <- ggtree(tree) %<+% tree_data + 
+    geom_tippoint(aes(color = factor(bID_5)), size = 1.0, shape = 16) + 
+    ggtitle(paste0(window_label)) +
+    theme_tree2() +
+    scale_color_manual(
+      name = "bID_5 copies",
+      values = c(
+        "0" = "gray80",
+        "1" = "#C4C856",  # light green
+        "2" = "#00496F",   # dark blue
+        "3" = "#EDA417",
+        "4" = "#DD4124"
+      )
+    )
+  print(p)
+}
+
+dev.off()
+```
+
+```{r Rishi's PCA code}
+#De-Kayne 2025 - example code to calculate and plot all pairwise distances between phylogenetic trees
+
+#load libraries
+library(ape)  
+library(gplots)  
+library(ggplot2)
+library(phangorn)
+library(phytools)
+setwd("/Users/rdk_mac_work/Dropbox/RishiMac3Work/rockfish/bestTree_chr1/")
+
+#load all newick trees - in this case they all end in '.bestTree'
+tree_files <- list.files(pattern = "\\.bestTree$")  # All files ending with .nwk
+
+#root them all around a given taxon, in this case "SebastesalascanusSEB-2"
+for(i in 1:length(tree_files)){
+  tree <- read.tree(tree_files[i])
+  output_name <- paste(tree_files[i], "_rooted.nwk", sep = "")
+  tree_rooted <- root(tree, "SebastesalascanusSEB-2", resolve.root = TRUE)
+  write.tree(tree_rooted, file = output_name)
+  
+}
+
+#now list them alland load them all into a list
+tree_files_rooted <- list.files(pattern = "\\.bestTree_rooted.nwk$")  
+trees <- lapply(tree_files_rooted, read.tree) 
+
+#make matrix to score pairwise RF distances
+num_trees <- length(trees)
+rf_matrix <- matrix(NA, nrow = num_trees, ncol = num_trees)
+
+#####IMPORTANT#####
+#here you can decide if you want to use A) RF or B) CID - two different distance metrics
+#comment out one of the steps below depending on which you want to use - I recommend trying both
+
+#########_______A)______RF_DISTANCE_____######### - gives values 1-100
+#calc pairwise RF distances and store them in the matrix
+for (i in 1:(num_trees-1)) {
+  for (j in (i+1):num_trees) {
+    rf_matrix[i, j] <- RF.dist(trees[[i]], trees[[j]])  # Calculate RF distance
+    rf_matrix[j, i] <- rf_matrix[i, j]  # Matrix is symmetric
+  }
+}
+
+#########_______B)______CID_____######### - gives values 0-1
+# Compute pairwise RF distances and store them in the matrix
+for (i in 1:(num_trees-1)) {
+  for (j in (i+1):num_trees) {
+    cid_matrix[i, j] <- TreeDist::TreeDistance(trees[[i]], trees[[j]])  # Calculate CI distance
+    cid_matrix[j, i] <- cid_matrix[i, j]  # Matrix is symmetric
+  }
+}
+
+#add row and column names to the matrix
+rownames(rf_matrix) <- colnames(rf_matrix) <- tree_files
+
+#view matrix
+print(rf_matrix)
+
+######
+#Step 1: do hierarchical clustering on the RF distance matrix
+#convert the RF distance matrix to a dist object
+rf_dist_matrix <- as.dist(rf_matrix)
+
+#do hierarchical clustering using the 'complete' linkage method (you could also use "average" or "single")
+hc <- hclust(rf_dist_matrix, method = "complete")
+
+######
+#Step 2: plot heatmap of the RF distance matrix with the clustering
+#heatmap.2 from the gplots package can be used visualize the distance matrix with a dendrogram
+heatmap.2(rf_matrix, 
+          Rowv = as.dendrogram(hc),  # Dendrogram for rows (trees)
+          Colv = as.dendrogram(hc),  # Dendrogram for columns (trees)
+          trace = "none",  # Hide trace lines
+          col = colorRampPalette(c("white", "red"))(100),  # Color scale from white (low) to red (high)
+          dendrogram = "both",  # Display both row and column dendrograms
+          main = "Heatmap of Pairwise RF Distances Between Trees",  # Title
+          margins = c(10, 10),  # Adjust margins to fit the labels
+          cexRow = 0.2,  # Adjust row label size
+          cexCol = 0.2)  # Adjust column label size
+
+#can also just plot the dendrogram by itself
+plot(hc, main = "Dendrogram of Hierarchical Clustering", xlab = "", sub = "", cex = 0.3)
+
+##clustering:
+# Perform hierarchical clustering - this will group similar trees i.e. those with small RF distances between them
+hc <- hclust(rf_dist_matrix, method = "complete")
+
+#now we can cut this big tree into 'k' clusters
+clusters <- cutree(hc, k = 22)
+
+#print out the clusters for each tree
+print(clusters)
+
+#could also cut the tree at a specific height (e.g., height = 0.05)
+##clusters_by_height <- cutree(hc, h = 0.05)
+##print(clusters_by_height)
+
+#now we can create a data frame that includes the tree filenames and their assigned cluster and plot them too
+cluster_info <- data.frame(Tree = tree_files, Cluster = clusters)
+print(cluster_info)
+plot(hc, main = "Dendrogram of Hierarchical Clustering", xlab = "", sub = "", cex = 0.3)
+rect.hclust(hc, k = 22, border = 2:4)  # Color the clusters in different colors
+
+###
+#you can also run MDS to identify similarities and differences between trees/windows
+#MDS - this takes the rf_dist_matrix as input
+# Perform classical MDS
+mds_result <- cmdscale(rf_dist_matrix, k = 2)  # Reduce to 2 dimensions
+
+#print the MDS result
+print(mds_result)
+mds_result <- as.data.frame(mds_result)
+#plot the MDS result
+plot(mds_result, main = "MDS Plot", xlab = "Dimension 1", ylab = "Dimension 2")
+text(x = mds_result$V1, y = mds_result$V2, labels = rownames(mds_result), cex = 0.3)
+```
+
+```{r}
+#De-Kayne 2025 - example code to calculate and plot all pairwise distances between phylogenetic trees
+
+#load libraries
+library(ape)  
+library(gplots)  
+library(ggplot2)
+library(phangorn)
+library(phytools)
+library(scales)
+setwd("~/Downloads/treefiles 4/bundle0/")
+
+# Read the tree
+#tree_files <- sprintf("/Users/samvardhinisridharan/Downloads/treefiles 4/bundle0/window%02d_aligned.fasta.treefile", 1:92)
+tree_files <- sprintf("/Users/samvardhinisridharan/Documents/datasets/treefiles/bundle0_window%02d.treefile", 2:9)
+
+# Loop through tree files
+for (file in tree_files) {
+  # Read the tree
+  tree <- read.tree(file)
+  
+  # Create a tibble from tip labels
+  tree_tips <- tibble(label = tree$tip.label) %>%
+    mutate(tree_tip_label = label)
+  
+  # Join with metadata
+  tree_data <- tree_tips %>%
+    left_join(merged_alignment_3_5, by = "tree_tip_label") %>%
+    mutate(final_label = case_when(
+      str_starts(label, "chr19_hap1") ~ "chimp_hap1",
+      str_starts(label, "chr19_hap2") ~ "chimp_hap2",
+      !is.na(contig) ~ contig,
+      TRUE ~ label  # fallback if no match found
+    ))
+  
+  # Assign the new labels
+  tree$tip.label <- tree_data$final_label
+  
+  # Root the tree using chimp haplotypes
+  if (all(c("chimp_hap1", "chimp_hap2") %in% tree$tip.label)) {
+    tree_rooted <- root(tree, outgroup = c("chimp_hap1", "chimp_hap2"), resolve.root = TRUE)
+    
+    # Write the rooted tree
+    output_name <- paste0(file, "_rooted.treefile")
+    write.tree(tree_rooted, file = output_name)
+    message("Rooted and saved: ", output_name)
+  } else {
+    message("Skipping ", file, ": chimp_hap1 or chimp_hap2 not found.")
+  }
+}
+
+# Step 2: Load rooted trees
+#tree_files_rooted <- list.files(pattern = "_rooted\\.treefile$")
+tree_files_rooted <- sprintf("~/Documents/datasets/treefiles/bundle0_window%02d.treefile_rooted.treefile", 2:9)
+trees <- lapply(tree_files_rooted, read.tree)
+
+# Step 3: Compute RF distance matrix
+num_trees <- length(trees)
+rf_matrix <- matrix(NA, nrow = num_trees, ncol = num_trees)
+
+common_tips <- Reduce(intersect, lapply(trees, function(t) t$tip.label))
+
+trees_pruned <- lapply(trees, function(t) drop.tip(t, setdiff(t$tip.label, common_tips)))
+
+num_trees <- length(trees_pruned)
+rf_matrix <- matrix(NA, nrow = num_trees, ncol = num_trees)
+
+for (i in seq_len(num_trees - 1)) {
+  for (j in seq((i + 1), num_trees)) {
+    rf_matrix[i, j] <- RF.dist(trees_pruned[[i]], trees_pruned[[j]])
+    rf_matrix[j, i] <- rf_matrix[i, j]
+  }
+}
+
+#add row and column names to the matrix
+rownames(rf_matrix) <- colnames(rf_matrix) <- tree_files
+
+#view matrix
+print(rf_matrix)
+
+######
+#Step 1: do hierarchical clustering on the RF distance matrix
+#convert the RF distance matrix to a dist object
+rf_dist_matrix <- as.dist(rf_matrix)
+min_val <- min(rf_matrix, na.rm = TRUE)
+rf_matrix[is.na(rf_matrix)] <- min_val
+rf_dist_matrix <- as.dist(rf_matrix)
+
+#do hierarchical clustering using the 'complete' linkage method (you could also use "average" or "single")
+hc <- hclust(rf_dist_matrix, method = "complete")
+
+######
+#Step 2: plot heatmap of the RF distance matrix with the clustering
+#heatmap.2 from the gplots package can be used visualize the distance matrix with a dendrogram
+fn_out = "~/Documents/figures/heatmap_rfdist.pdf"
+pdf(fn_out, width=6, height=6)
+
+heatmap_rfdist <- heatmap.2(rf_matrix, 
+          Rowv = as.dendrogram(hc),  # Dendrogram for rows (trees)
+          Colv = as.dendrogram(hc),  # Dendrogram for columns (trees)
+          trace = "none",  # Hide trace lines
+          col = colorRampPalette(c("#DD4124", "white"))(100),
+          dendrogram = "both",  # Display both row and column dendrograms
+          #main = "Heatmap of Pairwise RF Distances Between Trees",  # Title
+          margins = c(10, 10),  # Adjust margins to fit the labels
+          cexRow = 0.2,  # Adjust row label size
+          cexCol = 0.2)  # Adjust column label size
+
+dev.off()
+
+
+#can also just plot the dendrogram by itself
+plot(hc, main = "Dendrogram of Hierarchical Clustering", xlab = "", sub = "", cex = 0.3)
+
+##clustering:
+# Perform hierarchical clustering - this will group similar trees i.e. those with small RF distances between them
+hc <- hclust(rf_dist_matrix, method = "complete")
+
+#now we can cut this big tree into 'k' clusters
+clusters <- cutree(hc, k = 3)
+
+#print out the clusters for each tree
+print(clusters)
+
+#could also cut the tree at a specific height (e.g., height = 0.05)
+##clusters_by_height <- cutree(hc, h = 0.05)
+##print(clusters_by_height)
+
+#now we can create a data frame that includes the tree filenames and their assigned cluster and plot them too
+cluster_info <- data.frame(Tree = tree_files, Cluster = clusters)
+print(cluster_info)
+plot(hc, main = "Dendrogram of Hierarchical Clustering", xlab = "", sub = "", cex = 0.3)
+rect.hclust(hc, k = 2, border = 2:4)  # Color the clusters in different colors
+
+###
+#you can also run MDS to identify similarities and differences between trees/windows
+#MDS - this takes the rf_dist_matrix as input
+# Perform classical MDS
+mds_result <- cmdscale(rf_dist_matrix, k = 2)  # Reduce to 2 dimensions
+
+#print the MDS result
+print(mds_result)
+
+mds_result <- as.data.frame(mds_result) %>%
+  mutate(Tree = rownames(.)) %>%
+  mutate(
+    window = as.numeric(str_extract(Tree, "window\\d{2}") %>% str_extract("\\d{2}"))
+  )
+
+# Get coordinates of window92
+window9_coords <- mds_result %>%
+  filter(window == 9) %>%
+  dplyr::select(V1, V2) %>%
+  as.numeric()
+
+# Add new column with Euclidean distance to window92
+mds_result <- mds_result %>%
+  mutate(
+    dist_to_window9 = sqrt((V1 - window9_coords[1])^2 + (V2 - window9_coords[2])^2)
+  )
+
+ggplot(mds_result, aes(x = V1, y = V2)) +
+  geom_point(aes(color = window), size = 2) +
+  geom_text(aes(label = window), vjust = -0.7, size = 2) +
+  scale_color_gradient(low = "#00496F", high = "#DD4124", name = "Window") +
+  labs(title = "MDS Plot Colored by Window Number",
+       x = "dimension 1", y = "dimension 2") +
+  theme_minimal()
+
+pw_euc_distances <- ggplot(mds_result, aes(x = window, y = dist_to_window9)) +
+  geom_point(color = "black", size = 3.5) +
+  geom_smooth(method = "loess", se = FALSE, color = "#DD4124", size = 1) +
+  labs(title = "Smoothed pairwise euclidian distance of genetic distances between 50kb windows",
+       x = "window_number",
+       y = "distance to window09") +
+  theme_minimal()
+
+fn_out = "~/Documents/figures/pairwise_euclidian_distances_window09.pdf"
+pdf(fn_out, width=6, height=4)
+print(pw_euc_distances)
+dev.off()
+
+```
+
+```{r}
+library(ape)
+library(gplots)
+
+# Set up output file
+pdf("~/Documents/figures/heatmap_eucldist.pdf", width = 6, height = 6)
+
+# Process and plot
+{
+  # Step 1: Prune trees to shared tips
+  common_tips <- Reduce(intersect, lapply(trees, function(t) t$tip.label))
+  trees_pruned <- lapply(trees, function(t) drop.tip(t, setdiff(t$tip.label, common_tips)))
+
+  # Step 2: Convert to cophenetic distance vectors
+  tree_vectors <- lapply(trees_pruned, function(t) {
+    dist_matrix <- cophenetic(t)
+    as.vector(dist_matrix[upper.tri(dist_matrix)])
+  })
+
+  # Step 3: Construct feature matrix and compute Euclidean distance
+  feature_matrix <- do.call(rbind, tree_vectors)
+  eucl_matrix <- as.matrix(dist(feature_matrix, method = "euclidean"))
+
+  # Step 4: Add names
+  rownames(eucl_matrix) <- colnames(eucl_matrix) <- tree_files
+
+  # Step 5: Cluster and plot
+  hc <- hclust(as.dist(eucl_matrix), method = "complete")
+  heatmap.2(eucl_matrix,
+            Rowv = as.dendrogram(hc),
+            Colv = as.dendrogram(hc),
+            trace = "none",
+            col = colorRampPalette(c("red", "white"))(100),
+            dendrogram = "both",
+            margins = c(10, 10),
+            cexRow = 0.2,
+            cexCol = 0.2)
+}
+
+dev.off()
+
+
+
+# Step 1: Convert dist object to full matrix
+rf_full <- as.matrix(rf_dist_matrix)
+
+# Step 2: Extract distances to window9
+# Replace "window9" with the exact rowname used in your tree list
+window9_name <- "/Users/samvardhinisridharan/Documents/datasets/treefiles/bundle0_window09.treefile"
+
+# Step 3: Add the RF distances to mds_result
+mds_result <- mds_result %>%
+  mutate(dist_to_window9 = rf_full[rownames(mds_result), window9_name])
+
+ggplot(mds_result, aes(x = window, y = dist_to_window9, color = V1)) +
+  geom_point(size = 3) +
+  scale_color_gradient(low = "#00496F", high = "#FF6347") +  # or use `viridis::scale_color_viridis()`
+  theme_minimal() +
+  labs(
+    title = "MDS Plot Colored by RF Distance to window9",
+    x = "MDS Dimension 1",
+    y = "MDS Dimension 2",
+    color = "RF Distance to\nwindow9"
+  )
+
+
+
+pw_rf_distances <- ggplot(
+  mds_result %>% filter(dist_to_window9 != 0),
+  aes(x = as.numeric(window), y = dist_to_window9)
+) +
+  geom_smooth(method = "loess", se = FALSE, color = "black", linewidth = 0.6) +  # smoother line
+  geom_point(aes(fill = V1), shape = 21, size = 3, color = "black", stroke = 0.5) +
+#   geom_point(
+#   data = mds_result %>% filter(dist_to_window9 > 350),
+#   aes(x = as.numeric(window), y = dist_to_window9),
+#   shape = 21, fill = "gold", color = "black", size = 4, stroke = 0.7
+# ) +
+  scale_fill_gradient(low = "white", high = "#DD4124") +
+  theme_minimal() +
+  labs(
+    title = "Smoothed RF Distance to window9 with MDS Coloring",
+    x = "Window Index",
+    y = "RF Distance to window9",
+    fill = "MDS V1"
+  )
+
+fn_out = "~/Documents/figures/pairwise_rf_distances_window09.pdf"
+pdf(fn_out, width=6, height=4)
+print(pw_rf_distances)
+dev.off()
+
+```
+
+```{r dating the time tree}
+#This is to read the most simple timetree
+bundle0_tree <- str_c("~/Downloads/bundle0_window08_09_ALL_SAMPLES.timetree.nex") %>%
+  read.nexus()
+
+x_max <- max(ggtree::ggtree(bundle0_tree)$data$x)
+breaks_vec <- pretty(c(0, x_max))
+
+
+#A CM087750.1_46472008-46571960
+#B JBHDVX010000005.1_21996663-22096630
+#C JBHIJG010000010.1_21279991-21379957
+#D CM089673.1_47431225-47531196
+#E JBHDWP010000059.1_7963346-8063316
+
+mrca_node <- getMRCA(bundle0_tree, c("JBHDVX010000005.1_21996663-22096630", "JBHDWP010000059.1_7963346-8063316"))
+node_heights <- node.depth.edgelength(bundle0_tree)
+split_time <- (max(node_heights) - node_heights[mrca_node])/1e6
+cat("Estimated split time:", split_time, "mya\n")
+
+# Get all tip labels
+tips <- bundle0_tree$tip.label
+
+# Get node heights (distance from root)
+node_heights <- node.depth.edgelength(bundle0_tree)
+max_height <- max(node_heights)
+
+# Initialize matrix to store split times
+split_times <- matrix(NA, nrow = length(tips), ncol = length(tips),
+                      dimnames = list(tips, tips))
+
+# Loop over all unique pairs of tips
+for (i in 1:(length(tips)-1)) {
+  for (j in (i+1):length(tips)) {
+    tip1 <- tips[i]
+    tip2 <- tips[j]
+    mrca_node <- getMRCA(bundle0_tree, c(tip1, tip2))
+    split_time <- (max_height - node_heights[mrca_node]) / 1e6
+    split_times[tip1, tip2] <- split_time
+    split_times[tip2, tip1] <- split_time  # symmetric
+  }
+}
+
+# View result
+head(split_times[, 1:5])  # Show a few columns for inspection
+
+tree_tips <- tibble(label = bundle0_tree$tip.label) %>%
+  mutate(
+    #qname = str_extract(label, "^haplotype[0-9]+-[0-9]+"),
+    qname = str_extract(label, "^[^_]+"),
+    start = str_extract(label, "_[0-9]+") %>% str_remove("_"),
+    end = str_extract(label, "-[0-9]+$") %>% str_remove("-"),
+    tree_tip_label = str_c(qname, paste0(start, "-", end), sep = "_")
+  )
+
+tree_data <- left_join(tree_tips, merged_alignment_3_5_NEW, by = "tree_tip_label")
+
+tree_data <- merge(tree_tips, merged_alignment_3_5_NEW, by.x = "label", by.y = "tree_tip_label") %>%
+    dplyr::mutate(node_name = paste0(bID_3, "_", bID_5, n_bID_label))
+
+tree_simplified <- drop.tip(bundle0_tree, c("JBHIJB010000040.1_20717105-20817081", "JBHIJA010000047.1_22515101-22615081", "JBHIJC010000063.1_21957564-22057547", "haplotype1-0000038_22720446-22620439", "haplotype2-0000164_37226196-37325788"))
+
+tree <- tree_simplified
+
+tree_data <- merge(tree_tips, merged_alignment_3_5_NEW, by.x = "label", by.y = "tree_tip_label") %>%
+    dplyr::mutate(node_name = paste0(bID_3, "_", bID_5, n_bID_label)) 
+
+# Midpoint root the tree
+tree_rooted <- midpoint.root(tree)
+
+#tree_data_df <- tree_data %>% dplyr::select(tree_tip_label,node_name)
+
+blocks_df <- tree_data %>%
+  filter(!is.na(label)) %>%
+  filter(!is.na(label)) %>%
+  dplyr::select(label, bID_3, bID_5) %>%
+  pivot_longer(cols = c(bID_3, bID_5), names_to = "type", values_to = "count") %>%
+  filter(!is.na(count)) %>%
+  uncount(count) %>%
+  group_by(label, type) %>%
+  mutate(index = row_number()) %>%
+  ungroup()
+
+block_shapes <- tree_data %>%
+  filter(!is.na(bID_3)) %>%
+  filter(!is.na(label)) %>%
+  dplyr::select(label, bID_3, bID_5) %>%
+  pivot_longer(cols = c(bID_3, bID_5), names_to = "type", values_to = "count") %>%
+  filter(!is.na(count)) %>%
+  mutate(type = factor(type, levels = c("bID_3", "bID_5"))) %>%
+  uncount(count) %>%
+  arrange(label, type) %>%
+  group_by(label, type) %>%
+  mutate(index = row_number()) %>%
+  ungroup() %>%
+  mutate(
+    xpos = if_else(
+      type == "bID_3",
+      (index - 1) * 0.002,         # regular spacing for bID_3
+      0.004 + (index - 1) * 0.002   # fixed starting point for bID_5
+    )
+  )
+
+block_shapes <- block_shapes %>%
+  left_join(tree_data %>% dplyr::select(label, node_name), by = "label") %>%
+  dplyr::mutate(
+    arrow_type = ifelse(node_name == "2_2", "backward", "forward"),
+    arrow_xpos = -0.003  # position to the left of the squares/triangles
+  )
+
+shape_values <- c("bID_3" = 22, "bID_5" = 23)  # square, triangle
+color_values <- c("bID_3" = "#C4C856", "bID_5" = "#00496F")
+
+block_plot <- block_shapes %>%
+  mutate(label = factor(label, levels = rev(tree_data$label[!is.na(tree_data$label)]))) %>%
+  ggplot(aes(x = xpos, y = label, shape = type, fill = type)) +
+  geom_point(size = 1, color = "black") +
+  scale_shape_manual(values = c("bID_3" = 22, "bID_5" = 22)) +  # square + downward triangle
+  scale_fill_manual(values = color_values) +
+  theme_void() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "left"
+  )
+
+# With arrows for H1 and H2
+block_plot <- ggplot(block_shapes, aes(y = label)) +
+  # Arrows first
+  geom_point(aes(x = arrow_xpos, shape = arrow_type), size = 2, fill = "black", na.rm = TRUE) +
+  # Squares and triangles
+  geom_point(aes(x = xpos, shape = type, fill = type), size = 2, color = "black") +
+  scale_shape_manual(
+    values = c(
+      "forward" = 62,   # → arrow
+      "backward" = 60,  # ← arrow
+      "bID_3" = 22,     # square
+      "bID_5" = 24      # triangle
+    )
+  ) +
+  scale_fill_manual(values = c("bID_3" = "#00496F", "bID_5" = "#94B669")) +
+  theme_void() +
+  theme(legend.position = "none")
+
+block_plot <- ggplot(block_shapes, aes(y = label)) +
+  # Arrows as filled circles
+  # geom_point(
+  #   aes(x = arrow_xpos, fill = arrow_type), 
+  #   shape = 21, size = 2, color = "black", na.rm = TRUE
+  # ) +
+  # Squares and triangles
+  geom_point(
+    aes(x = xpos, shape = type, fill = type), 
+    size = 2, color = "black"
+  ) +
+  scale_shape_manual(
+    values = c(
+      "bID_3" = 22,  # square
+      "bID_5" = 24   # triangle
+    )
+  ) +
+  scale_fill_manual(
+    values = c(
+      #"forward" = "#DD4124",
+      #"backward" = "#E97C07",
+      "bID_3" = "#00496F",
+      "bID_5" = "#94B669"
+    )
+  ) +
+  theme_void() +
+  theme(legend.position = "none")
+
+#This code chunk below works. It dates the bundle0_tree for windows08 and windows09
+p <- ggtree(tree) %<+% tree_data +
+  geom_text2(
+    aes(label = ifelse(node_name %in% c("1_1.2", "1_1.3", "1_2.1", "1_3.2", "1_3.3"), node_name, NA)),
+    hjust = -0.3,
+    size = 2,
+    na.rm = TRUE
+  ) +
+  theme_tree2() +
+  ggtitle("dated tree: bundle0") +
+  scale_x_continuous(
+    name = "time (mya)",
+    breaks = breaks_vec,
+    labels = rev(breaks_vec / 1e6)
+  )
+
+p
+
+print(p)
+
+tree_tip_order <- p$data %>%
+  filter(isTip) %>%
+  arrange(y) %>%
+  pull(label)
+
+tree_data$label <- factor(tree_data$label, levels = tree_tip_order)
+
+block_shapes <- tree_data %>%
+  filter(!is.na(bID_3), !is.na(label)) %>%
+  dplyr::select(label, bID_3, bID_5) %>%
+  pivot_longer(cols = c(bID_3, bID_5), names_to = "type", values_to = "count") %>%
+  filter(!is.na(count)) %>%
+  mutate(type = factor(type, levels = c("bID_3", "bID_5"))) %>%
+  uncount(count) %>%
+  arrange(label, type) %>%
+  group_by(label, type) %>%
+  mutate(index = row_number()) %>%
+  ungroup() %>%
+  mutate(
+    xpos = if_else(
+      type == "bID_3",
+      (index - 1) * 0.002,
+      0.004 + (index - 1) * 0.002
+    ),
+    label = factor(label, levels = tree_tip_order)  # ensure vertical alignment
+  )
+
+# Combine tree and block plot
+structure_tree_with_blocks <- block_plot %>%
+  aplot::insert_left(p, width = 3)
+
+library(aplot)
+library(patchwork)
+
+structure_tree_with_blocks <- block_plot %>%
+  aplot::insert_left(p, width = 11)  # widen if needed
+
+structure_tree_with_blocks
+
+fn_out = "~/Documents/figures/HGSVC_HPRC_tree_ALL_SAMPLES_DATED_new.pdf"
+pdf(fn_out, width=12, height=24)
+print(structure_tree_with_blocks)
+dev.off()
+
+```
+
+```{r making a cladogram}
+
+keep_tips <- c("HG00099#1#JBHDWO010000061.1", #H1
+                         "HG00096#2#haplotype2-0000103", #H2
+                         "AG18355_8_hap2#chr19_hap1_hsa17:11792757-13440106", #bonobo direct
+                         "h2tg000018l:141690580-143346663", #most complete gorilla
+                         "PR01223_hap1#chr19_hap1_hsa17:13841928-15461349", #complete chimp,
+                        "chr19_pat_hsa17:19514981-18094864", #complete bonobo
+                         "chr19_hap2_hsa17:77931330-79243723", #mPonAbe (non-divergent)
+                         "chr19_hap1_hsa17:78393637-79708793")
+
+pruned_tree <- keep.tip(rooted_tree, keep_tips)
+
+p <- ggtree(pruned_tree, layout = "rectangular", branch.length = "none") + geom_tiplab()
+
+fn_out = "~/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/tree_topologies.pdf"
+pdf(fn_out, width=5, height=5)
+print(p)
+dev.off()
+
+```
+
+```{r using boottress}
+library(ape)
+library(ggtree)
+library(ggplot2)
+library(patchwork)
+
+# Tip renaming map
+tip_renames <- c(
+  "chr19_mat_hsa17_20582245-21048627" = "mPanPan.alt",
+  "chr19_pat_hsa17_18617913-19079559" = "mPanPan.pri",
+  "chr19_hap1_hsa17_21614462-22081205" = "mPanTro.hap1",
+  "chr19_hap2_hsa17_19758401-20225026" = "mPanTro.hap2",
+  "chr19_hap1_hsa17_79350798-78885094" = "mPonPyg.hap1",
+  "chr19_hap2_hsa17_75746872-75280290" = "mPonPyg.hap2",
+  "chr19_hap1_hsa17_76538256-76070732" = "mPonAbe.hap1",
+  "chr19_hap2_hsa17_78885731-78418041" = "mPonAbe.hap2",
+  "h1tg000024l_28122386-27658286" = "GorillaPR00053.hap1",
+  "h2tg000019l_2567491-2103522" = "GorillaPR00053.hap2",
+  "chr4_mat_hsa17x5_46436046-46899991" = "mGorGor.alt",
+  "chr4_pat_hsa17x5_46055126-46519286" = "mGorGor.pri",
+  "CM089673.1_46713933-48497812_367203-832266" = "H1D",
+  "CM089483.1_45294200-47197380_1195173-728614" = "H2",
+  "chr17_46488383-46953383" = "chm13_H1",
+  "h1tg000003l_141617000-141152858" = "GorillaPR00101.hap1",
+  "h2tg000018l_142635109-142169193" = "GorillaPR00101.hap2",
+  "AG18355_8_hap2_chr19_hap1_hsa17_11792757-13440106_938283-1405563" = "mPanTro.direct.1",
+  "AG18361_10_hap2_chr19_hap1_hsa17_10145820-11793192_938295-1405589" = "mPanTro.direct.2"
+)
+
+# Step 1: Read and root trees
+trees <- read.tree("~/Downloads/bundle0_aligned_BONOBO.fasta.boottrees")
+outgroup_tip <- "chr19_hap2_hsa17_75746872-75280290"
+
+rooted_clean_trees <- lapply(trees, function(tr) {
+  if (outgroup_tip %in% tr$tip.label) {
+    tr <- root(tr, outgroup = outgroup_tip, resolve.root = TRUE)
+    tr$edge.length <- NULL
+    return(tr)
+  } else {
+    return(NULL)
+  }
+})
+rooted_clean_trees <- Filter(Negate(is.null), rooted_clean_trees)
+
+# Step 2: Extract unique topologies
+tree_strings <- sapply(rooted_clean_trees, write.tree)
+topology_table <- table(tree_strings)
+unique_strings <- names(topology_table)
+unique_counts <- as.vector(topology_table)
+
+# Step 3: Parse trees and apply tip renaming
+unique_trees <- lapply(unique_strings, function(x) {
+  tr <- read.tree(text = x)
+  tr$tip.label <- sapply(tr$tip.label, function(lbl) {
+    if (lbl %in% names(tip_renames)) tip_renames[[lbl]] else lbl
+  })
+  tr
+})
+
+# Step 4: Plot with tip labels
+plots <- lapply(seq_along(unique_trees), function(i) {
+  ggtree(unique_trees[[i]]) +
+    geom_tiplab(size = 3) +
+    ggtitle(paste0("Topology ", i, "\nCount: ", unique_counts[i])) +
+    theme_tree2()
+})
+
+# Step 5: Save to PDF
+pdf("~/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/topology_trees_bundle0.pdf", width = 24, height = 4 * ceiling(length(plots) / 2))
+print(wrap_plots(plots))
+dev.off()
+```
+
