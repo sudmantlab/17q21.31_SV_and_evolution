@@ -1,0 +1,220 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(PNWColors)
+library(reshape2)
+```
+
+```{r}
+GTEx_readdepth <- read.delim("~/Downloads/GTEX_readdepth_NEW.txt")
+GTEx_genotypes <- read.delim("~/Downloads/genotypes_GTEX.txt")
+```
+
+
+```{r}
+H1_start_pos <- 46095000
+H1_end_pos <- 46123000
+H2_start_pos <- 46143000
+H2_end_pos <- 46238000
+
+# Calculate the average copy number for the H1 block per sample
+average_H1 <- GTEx_readdepth %>% 
+  filter(window_start >= H1_start_pos & window_start <= H1_end_pos) %>%
+  group_by(sample_name) %>%
+  summarize(CN_H1 = mean(read_depth, na.rm = TRUE))
+
+# Calculate the average copy number for the H2 block per sample
+average_H2 <- GTEx_readdepth %>% 
+  filter(window_start >= H2_start_pos & window_start <= H2_end_pos) %>%
+  group_by(sample_name) %>%
+  summarize(CN_H2 = mean(read_depth, na.rm = TRUE))
+
+# Combine the H1 and H2 average copy number data
+averages_H1_H2 <- average_H1 %>% 
+  left_join(average_H2, by = "sample_name")
+
+# Visualize the relationship between H1 and H2 average copy numbers
+copy_number_sp <- ggplot(averages_H1_H2, aes(x = CN_H1, y = CN_H2)) + 
+  geom_point() + 
+  labs(title = "Scatter plot of CNV between H1 and H2 blocks",
+       x = "Average CN H1",
+       y = "Average CN H2")
+
+GTEx_readdepth <- GTEx_readdepth %>% 
+  left_join(averages_H1_H2, by = "sample_name") %>%
+  mutate(sample = str_extract(sample_name, "GTEX-[A-Z0-9]+"))
+
+GTEx_readdepth_FINAL <- merge(GTEx_readdepth, GTEx_genotypes, by.x="sample", by.y="sample")
+```
+
+```{r}
+#first, assign sectors. Possible naming conventions are where it's clustered? Sector 2_2, Sector 2_3, Sector 2_4 etc
+#the margins should probably be +/- 0.5
+
+GTEx_readdepth_FINAL <- GTEx_readdepth_FINAL %>%
+  dplyr::mutate(sector = 
+           dplyr::case_when(
+             (CN_H1.x >= 1.5 & CN_H1.x <= 2.5 & CN_H2.y >= 1.5 & CN_H2.y <= 2.5) ~ "2_2",
+             (CN_H1.x >= 1.5 & CN_H1.x <= 2.5 & CN_H2.y >= 2.5 & CN_H2.y <= 3.5) ~ "2_3",
+             (CN_H1.x >= 1.5 & CN_H1.x <= 2.5 & CN_H2.y >= 3.5 & CN_H2.y <= 4.5) ~ "2_4",
+             (CN_H1.x >= 2.5 & CN_H1.x <= 3.5 & CN_H2.y >= 2.5 & CN_H2.y <= 3.5) ~ "3_3",
+             (CN_H1.x >= 2.5 & CN_H1.x <= 3.5 & CN_H2.y >= 3.5 & CN_H2.y <= 4.5) ~ "3_4",
+             (CN_H1.x >= 3.5 & CN_H1.x <= 4.5 & CN_H2.y >= 3.5 & CN_H2.y <= 4.5) ~ "4_4",
+             (CN_H1.x >= 3.5 & CN_H1.x <= 4.5 & CN_H2.y >= 4.5 & CN_H2.y <= 5.5) ~ "4_5",
+             (CN_H1.x >= 4.5 & CN_H1.x <= 5.5 & CN_H2.y >= 4.5 & CN_H2.y <= 5.5) ~ "5_5",
+           ))
+
+#second, reconcile inversion status and duplication status (use matrix developed at the last lab meeting)
+GTEx_readdepth_FINAL <- GTEx_readdepth_FINAL %>%
+  mutate(complex_genotype =
+           case_when(
+             (genotype == "H1H1" & sector == "2_2") ~ "H1/H1",
+             (genotype == "H1H2" & sector == "2_2") ~ "H1/H2",
+             (genotype == "H2H2" & sector == "2_2") ~ "H2/H2",
+             
+             (genotype == "H1H1" & sector == "3_3") ~ "H1/H1D",
+             (genotype == "H1H1" & sector == "4_4") ~ "H1D/H1D", #note this could also be H1/H1DD 
+             (genotype == "H1H1" & sector == "5_5") ~ "H1D/H1DD", #note this could also be H1/H1DDD
+             
+             (genotype == "H1H2" & sector == "2_3") ~ "H1/H2D",
+             (genotype == "H1H2" & sector == "3_3") ~ "H1D/H2",
+             (genotype == "H1H2" & sector == "3_4") ~ "H1D/H2D",
+             (genotype == "H1H2" & sector == "4_4") ~ "H1DD/H2",
+             (genotype == "H1H2" & sector == "4_5") ~ "H1DD/H2D",
+             (genotype == "H1H2" & sector == "5_3") ~ "H1DDD/H2",
+             
+             (genotype == "H2H2" & sector == "2_3") ~ "H2/H2D",
+             (genotype == "H2H2" & sector == "2_4") ~ "H2D/H2D"
+           ))
+
+segdupA_readdepth <- GTEx_readdepth_FINAL %>% 
+  #filter(window_start > 46512468 - 10000 & window_end < 46555646 + 10000) %>%
+  filter(window_start > 46346376 -10000 & window_end < 46489410 + 10000) %>%
+  group_by(sample) %>%
+  summarise(segdupA = median(read_depth, na.rm = TRUE))
+
+segdupB_readdepth <- GTEx_readdepth_FINAL %>% 
+  #filter(window_start > 46295131 -10000 & window_end < 46337794 + 10000) %>%
+  filter(window_start > 46564311 -10000 & window_end < 46707123 + 10000) %>%
+  group_by(sample) %>%
+  summarise(segdupB = median(read_depth, na.rm = TRUE))
+  
+segdup_readdepth <- GTEx_readdepth_FINAL %>%
+  left_join(segdupA_readdepth, by = "sample") %>%
+  left_join(segdupB_readdepth, by = "sample")
+
+segdup_readdepth_summary <- segdup_readdepth %>%
+  distinct(sample, segdupA, segdupB, complex_genotype) %>%
+  mutate(segdup_sum = segdupA + segdupB,
+         CNV_NSF = case_when(
+           segdup_sum > 1.79 & segdup_sum < 2.6 ~ 'NSF',
+           segdup_sum > 2.6 & segdup_sum < 3.5 ~ 'NSF_D',
+           segdup_sum > 3.5 & segdup_sum < 4.4 ~ 'NSF_2D',
+           segdup_sum > 4.4 & segdup_sum < 5.4 ~ 'NSF_3D',
+           segdup_sum > 5.4 & segdup_sum < 6.4 ~ 'NSF_4D',
+           segdup_sum > 6.4 ~ 'NSF_4D+',
+           TRUE ~ 'NO GENOTYPE ASSIGNMENT YET'
+         ))
+
+```
+
+```{r}
+library(tidyverse)
+
+# Define file path
+#file_name <- "~/Downloads/Brain_Cerebellar_Hemisphere.v8.normalized_expression.bed.gz_NSF.txt"
+file_name <- "~/Downloads/NSF/Artery_Coronary.v8.normalized_expression.bed.gz_NSF.txt"
+
+# Extract `gene` and `filename`
+gene <- str_extract(file_name, "(?<=_)[^.]+(?=\\.txt)")  # Extracts 'NSF'
+filename <- str_extract(file_name, "(?<=/)[^/]+(?=\\.v8)")  # Extracts 'Brain_Cerebellar_Hemisphere'
+
+# Read the dataset
+Brain_Cerebellar_Hemisphere.v8.normalized_expression.bed.gz_NSF <- read.delim(file_name)
+
+# Pivot the data longer and add the extracted values
+df_long <- Brain_Cerebellar_Hemisphere.v8.normalized_expression.bed.gz_NSF %>%
+  pivot_longer(cols = -c(X.chr, start, end, gene_id), names_to = "sample", values_to = "value") %>%
+  mutate(gene = gene,  # Add extracted gene
+         filename = filename)  # Add extracted filename
+```
+
+```{r}
+library(tidyverse)
+
+# Define the folder path
+folder_path <- "~/Downloads/all_files"
+
+# List all files in the folder
+files <- list.files(folder_path, pattern = "\\.txt$", full.names = TRUE)
+
+# Initialize an empty list to store dataframes
+df_list <- list()
+
+# Loop through each file
+for (file in files) {
+  # Extract `gene` and `filename`
+  gene <- str_extract(file, "(?<=_)[^.]+(?=\\.txt)")  # Extracts gene name
+  print(gene)
+  filename <- str_extract(file, "(?<=/)[^/]+(?=\\.v8)")  # Extracts tissue name
+  print(filename)
+
+  # Read the dataset
+  df <- read.delim(file)
+  
+  # Check if the dataframe is empty
+  if (nrow(df) == 0) {
+    next  # Skip this file if empty
+  }
+
+  # Pivot the data longer and add the extracted values
+  df_long <- df %>%
+    pivot_longer(cols = -c(X.chr, start, end, gene_id), names_to = "sample", values_to = "value") %>%
+    mutate(gene = gene,  # Add extracted gene
+           filename = filename)  # Add extracted filename
+
+  # Store the dataframe in the list
+  df_list[[file]] <- df_long
+}
+
+# Combine all dataframes into one
+final_df <- bind_rows(df_list, .id = "source_file")
+
+GTEX_NSF_all_values <- final_df %>% dplyr::select(start, end, gene_id, sample, value, gene, filename) %>% mutate(sample = str_replace(sample,"\\." , "-"))
+
+GTEX_NSF_all_values_FINAL <- merge(GTEX_NSF_all_values, segdup_readdepth_summary, by = "sample")
+
+write.csv(GTEX_NSF_all_values_FINAL, file = "~/Downloads/GTEX_NSF_KANSL1_MAPT.csv", row.names = FALSE)
+
+
+g=ggplot(GTEX_NSF_all_values_FINAL)
+g+geom_point(aes(x=segdup_sum,y=value))+facet_wrap(~filename)+
+  geom_smooth(aes(x=segdup_sum,y=value),method='lm')
+
+g=ggplot(GTEX_NSF_all_values_FINAL)
+g+geom_point(aes(x=segdup_sum,y=value),size=.1)+
+  geom_smooth(aes(x=segdup_sum,y=value),method='lm') + facet_wrap(~complex_genotype)
+
+
+summary(lm(segdup_sum~value+filename, data=GTEX_NSF_all_values_FINAL))
+summary(lm(segdup_sum~value, data=GTEX_NSF_all_values_FINAL))
+summary(lm(segdup_sum~value+filename+complex_genotpye, data=GTEX_NSF_all_values_FINAL))
+
+
+g=ggplot(GTEX_NSF_all_values_FINAL %>% filter(complex_genotype %in% c("H1/H1", "H1/H1D","H1/H2", "H1/H2D")))
+g+geom_boxplot(aes(x=complex_genotype,y=value))+facet_wrap(~filename)
+  #stat_summary(aes(x=complex_genotype,y=value))+facet_wrap(~filename)
+
+GTEX_NSF_all_values_FINAL
+```
+
