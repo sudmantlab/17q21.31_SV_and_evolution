@@ -1,0 +1,1758 @@
+---
+title: "Goode_Homolosine_Map_forSam"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(cowplot)   # for theme_minimal_grid()
+library(sf)        # for manipulation of simple features objects
+library(rworldmap) # for getMap()
+library(scatterpie)
+library(ggrepel)
+library(ggforce)
+library(remotes)
+library(rnaturalearth)
+library(sp)
+library(ztable)
+library(PNWColors)
+```
+
+```{r making the Goode Homolosine outline with the cuts}
+world_sf <- st_as_sf(getMap(resolution = "li"))
+
+# projection outline in long-lat coordinates
+lats <- c(
+  90:-90, # right side down
+  -90:0, 0:-90, # third cut bottom
+  -90:0, 0:-90, # second cut bottom
+  -90:0, 0:-90, # first cut bottom
+  -90:90, # left side up
+  90:0, 0:90, # cut top
+  90 # close
+)
+longs <- c(
+  rep(180, 181), # right side down
+  rep(c(80.01, 79.99), each = 91), # third cut bottom
+  rep(c(-19.99, -20.01), each = 91), # second cut bottom
+  rep(c(-99.99, -100.01), each = 91), # first cut bottom
+  rep(-180, 181), # left side up
+  rep(c(-40.01, -39.99), each = 91), # cut top
+  180 # close
+)
+
+goode_outline <- 
+  list(cbind(longs, lats)) %>%
+  st_polygon() %>%
+  st_sfc(
+    crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+  )
+
+# now we need to work in transformed coordinates, not in long-lat coordinates
+crs_goode <- "+proj=igh"
+goode_outline <- st_transform(goode_outline, crs = crs_goode)
+
+# get the bounding box in transformed coordinates and expand by 10%
+xlim <- st_bbox(goode_outline)[c("xmin", "xmax")]*1.1
+ylim <- st_bbox(goode_outline)[c("ymin", "ymax")]*1.1
+
+# turn into enclosing rectangle
+goode_encl_rect <- 
+  list(
+    cbind(
+      c(xlim[1], xlim[2], xlim[2], xlim[1], xlim[1]), 
+      c(ylim[1], ylim[1], ylim[2], ylim[2], ylim[1])
+    )
+  ) %>%
+  st_polygon() %>%
+  st_sfc(crs = crs_goode)
+
+# calculate the area outside the earth outline as the difference
+# between the enclosing rectangle and the earth outline
+goode_without <- st_difference(goode_encl_rect, goode_outline)
+```
+
+```{r}
+tgp_hgdp_sgdp_AllSpecificHapCounts <- read_csv("~/Documents/datasets/all_populations_final_freq.csv")
+
+data <- tgp_hgdp_sgdp_AllSpecificHapCounts %>%
+  as.data.frame() %>%
+  filter(N > 5) %>%
+  group_by(pop) %>%
+  slice_max(order_by = N, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+METADATAsubset_4099 <- read_table("~/Documents/datasets/metadata/METADATAsubset_4099.tsv")
+
+# unique_metadata_combinations <- METADATAsubset_4099 %>%
+#   dplyr::select(pop = hgdp_tgp_meta.Population, 
+#          latitude = hgdp_tgp_meta.Latitude, 
+#          longitude = hgdp_tgp_meta.Longitude) %>%
+#   distinct()
+# 
+# head(data)
+# 
+# merged_data <- left_join(data, unique_metadata_combinations, by = 'pop')
+# 
+# merged_data$latitude[merged_data$pop == 'Mongolian'] <- 46.8625
+# merged_data$longitude[merged_data$pop == 'Mongolian'] <- 103.8467
+# merged_data$latitude[merged_data$pop == 'Bantu Kenya'] <- -0.0236
+# merged_data$longitude[merged_data$pop == 'Bantu Kenya'] <- 37.9062
+# merged_data$latitude[merged_data$pop == 'Bantu South Africa'] <- -33.9221
+# merged_data$longitude[merged_data$pop == 'Bantu South Africa'] <- 18.4231
+# merged_data$latitude[merged_data$pop == 'Bergamo Italian'] <- 45.6942
+# merged_data$longitude[merged_data$pop == 'Bergamo Italian'] <- 9.6707
+# merged_data$latitude[merged_data$pop == 'Biaka'] <- 6.6111
+# merged_data$longitude[merged_data$pop == 'Biaka'] <- 20.9394
+# merged_data$latitude[merged_data$pop == 'Bougainville'] <- -6.3754
+# merged_data$longitude[merged_data$pop == 'Bougainville'] <- 155.3807
+# merged_data$latitude[merged_data$pop == 'Eskimo'] <- 61.0137
+# merged_data$longitude[merged_data$pop == 'Eskimo'] <- 99.1967
+# merged_data$latitude[merged_data$pop == 'Mbuti'] <- -4.0383
+# merged_data$longitude[merged_data$pop == 'Mbuti'] <- 21.7587
+# merged_data$latitude[merged_data$pop == 'Palestinian'] <- 28
+# merged_data$longitude[merged_data$pop == 'Palestinian'] <- 33
+# merged_data$latitude[merged_data$pop == 'Druze'] <- 24
+# merged_data$longitude[merged_data$pop == 'Druze'] <- 34 
+# merged_data$longitude[merged_data$pop == 'Brahui'] <- 60 #updated for South Asia
+# merged_data$longitude[merged_data$pop == 'Hazara'] <- 60 #updated for South Asia
+
+
+data <- read_csv("~/Documents/datasets/metadata/final_AFR.csv")
+
+# data <- merged_data %>%
+#   dplyr::select(pop, latitude.x, longitude.x, Freq, H1, H1D, H2, H2D) %>% filter(Freq > 5)
+
+# Use for all the samples/populations
+# df_wide <- data %>%
+#   dplyr::select(pop, latitude.x, longitude.x, Freq, H1, H1D, H2, H2D) %>%
+#   rename(latitude = latitude.x, longitude = longitude.x) %>%
+#   pivot_longer(cols = c(H1, H1D, H2, H2D), 
+#                names_to = "haplotype", 
+#                values_to = "proportion") %>%
+#   pivot_wider(names_from = haplotype, values_from = proportion, values_fill = list(proportion = 0)) %>%
+#   group_by(pop, latitude, longitude, Freq) %>%
+#   summarise(across(starts_with("H"), sum, na.rm = TRUE))
+
+# Specifically for Africans (not South African Groups)
+# df_wide <- AFR_summary_table_final %>%
+#   dplyr::select(pop, lat, long, N, H1, H1D, H2, H2D) %>%
+#   #rename(latitude = latitude.x, longitude = longitude.x) %>%
+#   pivot_longer(cols = c(H1, H1D, H2, H2D), 
+#                names_to = "haplotype", 
+#                values_to = "proportion") %>%
+#   pivot_wider(names_from = haplotype, values_from = proportion, values_fill = list(proportion = 0)) %>%
+#   group_by(pop, lat, long, N) %>%
+#   summarise(across(starts_with("H"), sum, na.rm = TRUE))
+#   #filter(pop != "ASW") %>%
+#   #filter(pop != "ACB") %>%
+#   #filter(!pop %in% c("Himba", "San", "Bantu Tswana", "Bantu Herero", "Ju_hoan_North", "Khomani_San", "Nama", "Bantu South Africa")) %>%
+#   #filter(pop %in% c("Masai", "LWK", "Bantu Kenya", "Sheko", "Bench", "Majang", "Luo", "Chabu", "Somali"))
+  
+# Specifically for Africans (ONLY South African Groups)
+# df_wide <- data %>%
+#   dplyr::select(pop, lat, long, N, H1, H1D, H2, H2D) %>%
+#   #rename(latitude = latitude.x, longitude = longitude.x) %>%
+#   pivot_longer(cols = c(H1, H1D, H2, H2D), 
+#                names_to = "haplotype", 
+#                values_to = "proportion") %>%
+#   pivot_wider(names_from = haplotype, values_from = proportion, values_fill = list(proportion = 0)) %>%
+#   group_by(pop, lat, long, N) %>%
+#   summarise(across(starts_with("H"), sum, na.rm = TRUE)) %>%
+#   filter(pop != "ASW") %>%
+#   filter(pop != "ACB")
+  #filter(pop %in% c("Himba", "San", "Bantu Tswana", "Bantu Herero", "Ju_hoan_North", "Khomani_San", "Nama", "Bantu South Africa"))
+
+# df_wide <- data %>%
+#   dplyr::select(pop, lat, long, N, H1, H1D, H2, H2D) %>%
+#   #rename(latitude = latitude.x, longitude = longitude.x) %>%
+#   pivot_longer(cols = c(H1, H1D, H2, H2D), 
+#                names_to = "haplotype", 
+#                values_to = "proportion") %>%
+#   pivot_wider(names_from = haplotype, values_from = proportion, values_fill = list(proportion = 0)) %>%
+#   group_by(pop, lat, long, N) %>%
+#   summarise(across(starts_with("H"), sum, na.rm = TRUE)) %>%
+#   filter(pop != "ASW") %>%
+#   filter(pop != "ACB")
+#   #filter(!pop %in% c("Himba", "San", "Bantu Tswana", "Bantu Herero", "Ju_hoan_North", "Khomani_San", "Nama", "Bantu South Africa")) %>%
+#   #filter(!pop %in% c("Masai", "LWK", "Bantu Kenya", "Sheko", "Bench", "Majang", "Luo", "Chabu", "Somali"))
+
+data <- df_wide
+```
+
+```{r Final plot for global population but only H1* and H2* - no bounding box and clean legend}
+# Define a maximum radius for the pies (tweak this based on visual needs)
+max_radius <- 2.5e5 + (1.2e5 * (200 / 2) / 100)
+
+size_legend_df <- data.frame(
+  long = c(-25, -25, -25, -25), 
+  lat = c(150, 150, 150, 150),
+  size = c(10, 50, 100, 200)  # These are the sizes you want in the legend
+)
+
+# Create a modified dataset where H1 and H1D are combined into H1*, and H2 and H2D are combined into H2*
+scaled_data_condensed <- scaled_data %>%
+  mutate(`H1*` = H1 + H1D,  # Combine H1 and H1D into H1*
+         `H2*` = H2 + H2D)  # Combine H2 and H2D into H2*
+
+# Calculate consistent radii based on sample size
+scaled_data_condensed <- scaled_data_condensed %>%
+  mutate(r = sqrt(Freq) / max(sqrt(Freq)) * max_radius)
+
+# Plot the updated dataset with the new combined categories
+g_star = ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85", color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_scatterpie(mapping=aes(x=long, y=lat, group=pop, r=r),  # Use the consistent radius
+                  data=scaled_data_condensed,
+                  cols=c("H1*", "H2*"),  # Use the combined columns
+                  color = "white",  # Set border color to white
+                  lwd = 0.05) +     # Thinner borders
+  coord_sf(crs = crs_goode, default_crs = crs_goode, 
+           xlim = c(lon_min, lon_max),   # Zoom into the specific longitude range
+           ylim = c(lat_min, lat_max)) +  # Zoom into the specific latitude range
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "bottom",     
+        legend.box.background = element_blank(), 
+        legend.background = element_blank()) +   
+  scale_fill_manual(values = c("#00496F", "#e27602"), name = "haplotype") +  # Two colors for H1* and H2*
+  scale_color_manual(values = custom_border_colors, name = "haplotype") +  # Border colors
+  geom_point(data = size_legend_df, aes(x = long, y = lat, size = size), shape = 21, fill = "white", color = "grey85") + 
+  scale_size_continuous(name = "sample size (N)", 
+                        breaks = c(10, 50, 100, 200),  # Match the sizes to the pies
+                        labels = c("10", "50", "100", "200"),
+                        guide = guide_legend(nrow = 2))  # Set legend items in new lines
+
+g_star
+
+fn_out = paste("~/Documents/figures/maps and pies/final/summary_panels_SCALED.pdf")
+pdf(fn_out,width=8,height=4)
+print(g_star)
+dev.off()
+
+```
+
+```{r Final plot for global population but only H1* and H2* - no bounding box and clean legend - all sample size scaling factors}
+# Define a maximum radius for the pies (tweak this based on visual needs)
+max_radius <- 2.5e5 + (1.2e5 * (200 / 2) / 100)
+
+# size_legend_df <- data.frame(
+#   long = c(-25, -25, -25, -25), 
+#   lat = c(150, 150, 150, 150),
+#   size = c(10, 50, 100, 200)  # These are the sizes you want in the legend
+# )
+
+# Create a modified dataset where H1 and H1D are combined into H1*, and H2 and H2D are combined into H2*
+scaled_data_condensed <- scaled_data %>%
+  mutate(`H1*` = H1 + H1D,  # Combine H1 and H1D into H1*
+         `H2*` = H2 + H2D)  # Combine H2 and H2D into H2*
+
+# Calculate consistent radii based on sample size
+scaled_data_condensed <- scaled_data_condensed %>%
+  mutate(r = sqrt(Freq) / max(sqrt(Freq)) * max_radius)
+
+# Plot the updated dataset with the new combined categories
+g_star = ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85", color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_scatterpie(mapping=aes(x=long, y=lat, group=pop, r=129804.6*1.75),  # Use the consistent radius
+                  data=scaled_data_condensed,
+                  cols=c("H1*", "H2*"),  # Use the combined columns
+                  color = "white",  # Set border color to white
+                  lwd = 0.05) +     # Thinner borders
+  coord_sf(crs = crs_goode, default_crs = crs_goode, 
+           xlim = c(lon_min, lon_max),   # Zoom into the specific longitude range
+           ylim = c(lat_min, lat_max)) +  # Zoom into the specific latitude range
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "bottom",     
+        legend.box.background = element_blank(), 
+        legend.background = element_blank()) +   
+  scale_fill_manual(values = c("#00496F", "#e27602"), name = "haplotype") +  # Two colors for H1* and H2*
+  scale_color_manual(values = custom_border_colors, name = "haplotype")  # Border colors
+  # geom_point(data = size_legend_df, aes(x = long, y = lat, size = size), shape = 21, fill = "white", color = "grey85") + 
+  # scale_size_continuous(name = "sample size (N)", 
+  #                       breaks = c(10, 50, 100, 200),  # Match the sizes to the pies
+  #                       labels = c("10", "50", "100", "200"),
+  #                       guide = guide_legend(nrow = 2))  # Set legend items in new lines
+
+g_star
+
+fn_out = paste("~/Documents/figures/maps and pies/final/summary_panels_NOT_scaled.pdf")
+pdf(fn_out,width=8,height=4)
+print(g_star)
+dev.off()
+
+```
+
+```{r Final plot for global populations - no bounding box, and clean legend}
+# Define a maximum radius for the pies (adjust this based on visual needs)
+#max_radius <- 2.5e5
+
+# Create a bounding box for Europe in the standard latitude/longitude projection
+bbox_europe <- st_as_sf(data.frame(
+  lon = c(-10, 46), # Longitude range for Europe
+  lat = c(39, 70)   # Latitude range for Europe
+), coords = c("lon", "lat"), crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+
+# Transform the bounding box to the Goode projection
+bbox_europe_goode <- st_transform(bbox_europe, crs = crs_goode)
+
+# Extract the transformed coordinates for xlim and ylim
+bbox_coords <- st_bbox(bbox_europe_goode)
+lon_min <- bbox_coords["xmin"]
+lon_max <- bbox_coords["xmax"]
+lat_min <- bbox_coords["ymin"]
+lat_max <- bbox_coords["ymax"]
+
+# # Create a size legend dataframe with radii that match the pie sizes
+# size_values <- c(10, 50, 100, 200)  # Example sample sizes
+# size_legend_df <- data.frame(
+#   long = c(-10, -10, -10, -10),  # Adjust longitude to keep it in the plot area
+#   lat = c(55, 56, 57, 58),       # Adjust latitude to place it visibly on the plot
+#   size = sqrt(size_values) / max(sqrt(size_values)) * max_radius # Same transformation as used for the pies
+# )
+
+# Calculate consistent radii based on sample size for pies
+scaled_data <- scaled_data %>%
+  mutate(r = sqrt(Freq) / max(sqrt(Freq)) * max_radius)
+
+# Now apply these limits to your plot
+g_Europe = ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85", color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_scatterpie(mapping=aes(x=long, y=lat, group=pop, r=r),
+                  data=scaled_data,
+                  cols=c("H1", "H1D", "H2", "H2D"),
+                  color = "white", # Set border color to white
+                  lwd = 0.05) +    # Thinner borders
+  coord_sf(crs = crs_goode, default_crs = crs_goode, 
+           xlim = c(lon_min, lon_max),   # Use transformed x limits
+           ylim = c(lat_min, lat_max)) +  # Use transformed y limits
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "bottom",     
+        legend.box.background = element_blank(), 
+        legend.background = element_blank()) +   
+  scale_fill_manual(values = custom_fill_colors, name = "haplotype") + 
+  scale_color_manual(values = custom_border_colors, name = "haplotype") +
+  #geom_point(data = size_legend_df, aes(x = long, y = lat, size = size), shape = 21, fill = "white", color = "grey") + 
+  # scale_size_continuous(name = "sample size (N)", 
+  #                       breaks = sqrt(size_values) / max(sqrt(size_values)) * max_radius,  # Adjust breaks to match the pie transformation
+  #                       labels = c("10", "50", "100", "200"),
+  #                       guide = guide_legend(nrow = 2)) + # Set legend items in new lines
+  # Add labels for the populations
+  geom_label(data = scaled_data, 
+            aes(x = long, y = lat, label = pop), 
+            size = 1.9, hjust = 0, vjust = -1.15, 
+            fill = "grey85",
+            color = "black")  # Adjust label position with hjust and vjust
+
+# Test print the plot
+print(g_Europe)
+
+# Optionally save the plot as a PDF
+fn_out = paste("~/Documents/figures/maps and pies/final/europe_SCALED.pdf")
+pdf(fn_out, width=7, height=7)
+print(g_Europe)
+dev.off()
+```
+
+```{r Final plot for global populations - but more consistent scaling factors and clean legend}
+# Define a maximum radius for the pies (tweak this based on visual needs)
+max_radius <- 2.5e5 + (1.2e5 * (200 / 2) / 100)
+
+CNV_points_sf <- data %>% st_as_sf(coords = c("lat","long"), 
+                                   crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+
+
+#%>% 
+  #filter(!pop %in% c("ACB", "Bantu Kenya", "Bantu South Africa", "Biaka", "ESN", "GWD", "LWK", "YRI", "Mbuti", "MSL", "Mandenka"))
+
+CNV_points_sf_t <- st_transform(CNV_points_sf, crs=crs_goode) %>% 
+  as_tibble() %>%
+  mutate(long=geometry %>% st_coordinates() %>% .[,"X"], lat=geometry %>% st_coordinates() %>% .[,"Y"]) 
+
+custom_fill_colors <- c("#00496F","#16879D", "#e27602", "#ee9f27")
+custom_border_colors <- c("white","white", "white", "white")
+
+scaled_data = CNV_points_sf_t
+
+# Define the limits for zoom (replace with the desired values based on your data)
+lon_min <- min(scaled_data$long) - 5  # A small buffer around the minimum longitude
+lon_max <- max(scaled_data$long) + 5  # A small buffer around the maximum longitude
+lat_min <- min(scaled_data$lat) - 5   # A small buffer around the minimum latitude
+lat_max <- max(scaled_data$lat) + 5   # A small buffer around the maximum latitude
+
+# size_legend_df <- data.frame(
+#   long = c(-25, -25, -25, -25), 
+#   lat = c(150, 150, 150, 150),
+#   size = c(10, 50, 100, 200)  # These are the sizes you want in the legend
+# )
+
+# Calculate consistent radii based on sample size
+scaled_data <- scaled_data %>%
+  mutate(r = sqrt(N) / max(sqrt(N)) * max_radius)
+
+g = ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85", color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_scatterpie(mapping=aes(x=long, y=lat, group=pop, r=129804.6*1.75),
+                  data=scaled_data,
+                  cols=c("H1", "H1D", "H2", "H2D"),
+                  color = "white", # Set border color to white
+                  lwd = 0.05) +    # Thinner borders
+  coord_sf(crs = crs_goode, default_crs = crs_goode, 
+           xlim = c(lon_min, lon_max),   # Zoom into the specific longitude range
+           ylim = c(lat_min, lat_max)) +  # Zoom into the specific latitude range
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "bottom",     
+        legend.box.background = element_blank(), 
+        legend.background = element_blank()) +   
+  scale_fill_manual(values = custom_fill_colors, name = "haplotype") + 
+  scale_color_manual(values = custom_border_colors, name = "haplotype") 
+  #geom_point(data = size_legend_df, aes(x = long, y = lat, size = size), shape = 21, fill = "white", color = "grey")  
+  # scale_size_continuous(name = "sample size (N)", 
+  #                       breaks = c(10, 50, 100, 200),  # Match the sizes to the pies
+  #                       labels = c("10", "50", "100", "200"),
+  #                       guide = guide_legend(nrow = 2))  # Set legend items in new lines
+
+fn_out = paste("/Users/samvardhinisridharan/Documents/figures/maps and pies/final/CAAPA_data_scaled.pdf")
+pdf(fn_out,width=8,height=4)
+print(g)
+dev.off()
+
+```
+
+```{r Final plot for European populations}
+# Define a maximum radius for the pies (tweak this based on visual needs)
+max_radius <- 2.5e5 + (1.2e5 * (200 / 2) / 100)
+
+# Create a bounding box for Europe in the standard latitude/longitude projection
+bbox_europe <- st_as_sf(data.frame(
+  lon = c(-10, 46), # Longitude range for Europe
+  lat = c(39, 70)   # Latitude range for Europe
+), coords = c("lon", "lat"), crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+
+# Transform the bounding box to the Goode projection
+bbox_europe_goode <- st_transform(bbox_europe, crs = crs_goode)
+
+# Extract the transformed coordinates for xlim and ylim
+bbox_coords <- st_bbox(bbox_europe_goode)
+lon_min <- bbox_coords["xmin"]
+lon_max <- bbox_coords["xmax"]
+lat_min <- bbox_coords["ymin"]
+lat_max <- bbox_coords["ymax"]
+
+size_legend_df <- data.frame(
+  long = c(-25, -25, -25, -25), 
+  lat = c(150, 150, 150, 150),
+  size = c(10, 50, 100, 200)  # These are the sizes you want in the legend
+)
+
+# Calculate consistent radii based on sample size
+scaled_data <- scaled_data %>%
+  mutate(r = sqrt(Freq) / max(sqrt(Freq)) * max_radius)
+
+# Now apply these limits to your plot
+g_Europe = ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85", color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_scatterpie(mapping=aes(x=long, y=lat, group=pop, r=(1.35e5+(1.2e5*(Freq/2)/100))),
+                  data=scaled_data,
+                  cols=c("H1", "H1D", "H2", "H2D"),
+                  color = "white", # Set border color to white
+                  lwd = 0.05) +    # Thinner borders
+  coord_sf(crs = crs_goode, default_crs = crs_goode, 
+           xlim = c(lon_min, lon_max),   # Use transformed x limits
+           ylim = c(lat_min, lat_max)) +  # Use transformed y limits
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "bottom",     
+        legend.box.background = element_blank(), 
+        legend.background = element_blank()) +   
+  scale_fill_manual(values = custom_fill_colors, name = "haplotype") + 
+  scale_color_manual(values = custom_border_colors, name = "haplotype") +
+  geom_point(data = size_legend_df, aes(x = long, y = lat, size = size), shape = 21, fill = "white", color = "grey") + 
+  scale_size_continuous(name = "sample size (N)", 
+                        breaks = c(10, 50, 100, 200),  # Match the sizes to the pies
+                        labels = c("10", "50", "100", "200"),
+                        guide = guide_legend(nrow = 2))+ # Set legend items in new lines
+  # Add labels for the populations
+  geom_label(data = scaled_data, 
+            aes(x = long, y = lat, label = pop), 
+            size = 1.9, hjust = 0, vjust = -1.15, 
+            fill = "grey85",
+            color = "black")  # Adjust label position with hjust and vjust
+
+# Save the plot as a PDF
+fn_out = paste("~/Documents/figures/maps and pies/final/d.pdf")
+pdf(fn_out, width=8, height=4)
+print(g_Europe)
+dev.off()
+```
+
+```{r South Asia part 1}
+
+library(ggplot2)
+library(sf)
+library(scatterpie)
+
+# Define the Mercator projection (EPSG:3857)
+crs_mercator <- "+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+
+# Create a bounding box for Europe in the standard latitude/longitude projection
+bbox_europe <- st_as_sf(data.frame(
+  lon = c(55, 88), # Longitude range for South Asia
+  lat = c(4, 37)   # Latitude range for South Asia
+), coords = c("lon", "lat"), crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+
+# Transform the bounding box to the Mercator projection
+bbox_europe_mercator <- st_transform(bbox_europe, crs = crs_mercator)
+
+# Extract the transformed coordinates for xlim and ylim
+bbox_coords <- st_bbox(bbox_europe_mercator)
+lon_min <- bbox_coords["xmin"]
+lon_max <- bbox_coords["xmax"]
+lat_min <- bbox_coords["ymin"]
+lat_max <- bbox_coords["ymax"]
+
+# Create a dummy dataframe for the size legend
+size_legend_df <- data.frame(
+  long = c(0, 0, 0), 
+  lat = c(0, 0, 0),
+  size = c((1.35e5 + (1.2e5 * (10 / 2) / 100)), 
+           (1.35e5 + (1.2e5 * (50 / 2) / 100)), 
+           (1.35e5 + (1.2e5 * (100 / 2) / 100)))
+)
+
+# Now apply these limits to your plot
+g_SouthAsia_1 <- ggplot(world_sf) + 
+  geom_sf(size = 0.5 / .pt, fill = "grey85", color = "grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_scatterpie(mapping = aes(x = long, y = lat, group = pop, r = (1.35e5 + (1.2e5 * (Freq / 2) / 100))),
+                  data = scaled_data,
+                  cols = c("H1", "H1D", "H2", "H2D"),
+                  color = "white", # Set border color to white
+                  lwd = 0.05) +    # Thinner borders
+  coord_sf(crs = crs_mercator, default_crs = crs_mercator, 
+           xlim = c(lon_min, lon_max),   # Use transformed x limits
+           ylim = c(lat_min, lat_max)) +  # Use transformed y limits
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "bottom",     
+        legend.box.background = element_blank(), 
+        legend.background = element_blank()) +   
+  scale_fill_manual(values = custom_fill_colors, name = "haplotype") + 
+  scale_color_manual(values = custom_border_colors, name = "haplotype") +
+  # Add labels for the populations
+  geom_label(data = scaled_data, 
+             aes(x = long, y = lat, label = pop), 
+             size = 1.9, hjust = 0, vjust = -1.15, 
+             fill = "grey85",
+             color = "black")  # Adjust label position with hjust and vjust
+
+# Save the plot as a PDF
+fn_out <- paste("~/Documents/figures/maps and pies/final/c.pdf")
+pdf(fn_out, width = 8, height = 4)
+print(g_SouthAsia_1)
+dev.off()
+
+
+```
+
+```{r South Asia part 1}
+
+library(ggplot2)
+library(sf)
+library(scatterpie)
+
+# Define the Mercator projection (EPSG:3857)
+crs_mercator <- "+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+
+# Create a bounding box for Europe in the standard latitude/longitude projection
+bbox_europe <- st_as_sf(data.frame(
+  lon = c(59, 71), # Longitude range for South Asia
+  lat = c(20, 37)   # Latitude range for South Asia
+), coords = c("lon", "lat"), crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+
+# Transform the bounding box to the Mercator projection
+bbox_europe_mercator <- st_transform(bbox_europe, crs = crs_mercator)
+
+# Extract the transformed coordinates for xlim and ylim
+bbox_coords <- st_bbox(bbox_europe_mercator)
+lon_min <- bbox_coords["xmin"]
+lon_max <- bbox_coords["xmax"]
+lat_min <- bbox_coords["ymin"]
+lat_max <- bbox_coords["ymax"]
+
+# Create a dummy dataframe for the size legend
+size_legend_df <- data.frame(
+  long = c(0, 0, 0), 
+  lat = c(0, 0, 0),
+  size = c((1.35e5 + (1.2e5 * (10 / 2) / 100)), 
+           (1.35e5 + (1.2e5 * (50 / 2) / 100)), 
+           (1.35e5 + (1.2e5 * (100 / 2) / 100)))
+)
+
+# Now apply these limits to your plot
+g_SouthAsia_2 <- ggplot(world_sf) + 
+  geom_sf(size = 0.5 / .pt, fill = "grey85", color = "grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_scatterpie(mapping = aes(x = long, y = lat, group = pop, r = (1.35e5 + (1.2e5 * (Freq / 2) / 100))),
+                  data = scaled_data,
+                  cols = c("H1", "H1D", "H2", "H2D"),
+                  color = "white", # Set border color to white
+                  lwd = 0.05) +    # Thinner borders
+  coord_sf(crs = crs_mercator, default_crs = crs_mercator, 
+           xlim = c(lon_min, lon_max),   # Use transformed x limits
+           ylim = c(lat_min, lat_max)) +  # Use transformed y limits
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "bottom",     
+        legend.box.background = element_blank(), 
+        legend.background = element_blank()) +   
+  scale_fill_manual(values = custom_fill_colors, name = "haplotype") + 
+  scale_color_manual(values = custom_border_colors, name = "haplotype") +
+  # Add labels for the populations
+  geom_label(data = scaled_data, 
+             aes(x = long, y = lat, label = pop), 
+             size = 1.9, hjust = 0, vjust = -1.15, 
+             fill = "grey85",
+             color = "black")  # Adjust label position with hjust and vjust
+
+# Save the plot as a PDF
+fn_out <- paste("~/Documents/figures/maps and pies/final/c_2.pdf")
+pdf(fn_out, width = 8, height = 4)
+print(g_SouthAsia_2)
+dev.off()
+
+
+```
+
+```{r Map of African populations dataframe}
+# Load required packages
+library(dplyr)
+library(tidyr)
+library(stringr)
+
+# Read the dataset
+supplementary_table_1_FINAL <- read.csv("~/Documents/datasets/metadata/supplementary_table_1_FINAL.csv")
+
+# Filter and update population names
+supplementary_table_1_FINAL_AFR <- supplementary_table_1_FINAL %>%
+  filter(superpop == 'AFR') %>%
+  mutate(pop = str_replace_all(pop, c(
+    "BantuKenya" = "Bantu Kenya", 
+    "BantuHerero" = "Bantu Herero",
+    "BantuTswana" = "Bantu Tswana",
+    "Esan" = "ESN",
+    "Gambian" = "GWD",
+    "Luhya" = "LWK",
+    "Yoruba" = "YRI"
+  )))
+
+# Add hap1 column based on complex_genotype
+AFR_summary_table <- supplementary_table_1_FINAL_AFR %>%
+  mutate(hap1 = case_when(
+    complex_genotype %in% c("H1/H1", "H1/H1D", "H1/H2", "H1/H2D") ~ "H1",
+    complex_genotype %in% c("H1D/H1D", "H1D/H1DD", "H1D/H2", "H1D/H2D") ~ "H1D",
+    complex_genotype == "H1DD/H2D" ~ "H1DD",
+    complex_genotype %in% c("H2/H2", "H2/H2D") ~ "H2",
+    complex_genotype == "H2D/H2D" ~ "H2D",
+    TRUE ~ NA_character_
+  ))
+
+# Add hap2 column based on complex_genotype
+AFR_summary_table <- AFR_summary_table %>%
+  mutate(hap2 = case_when(
+    complex_genotype == "H1/H1" ~ "H1",
+    complex_genotype == "H1/H2" ~ "H2",
+    complex_genotype == "H1/H1D" ~ "H1D",
+    complex_genotype %in% c("H1/H2D", "H1D/H2", "H1D/H2D", "H1DD/H2D") ~ "H2D",
+    complex_genotype %in% c("H2/H2", "H2/H2D") ~ "H2D",
+    TRUE ~ NA_character_
+  ))
+
+# Pivot the haplotype columns into long format
+AFR_summary_table_long <- AFR_summary_table %>%
+  pivot_longer(cols = c(hap1, hap2), names_to = "hap_type", values_to = "haplotype")
+
+# Step 1: Aggregate the counts for each population and haplotype
+AFR_summary_table_aggregated <- AFR_summary_table_long %>%
+  group_by(pop, haplotype) %>%
+  summarise(total_count = n(), .groups = 'drop')  # Use n() to count rows
+
+# Step 2: Pivot to wide format (one row per population)
+AFR_summary_table_wide <- AFR_summary_table_aggregated %>%
+  pivot_wider(
+    names_from = haplotype,
+    values_from = total_count,
+    values_fill = list(total_count = 0)
+  )
+
+# Step 3: Calculate total counts for each population
+total_counts <- AFR_summary_table_long %>%
+  group_by(pop) %>%
+  summarise(total = n(), .groups = 'drop')
+
+# Step 4: Merge with total counts and calculate proportions
+AFR_summary_table_final <- AFR_summary_table_wide %>%
+  left_join(total_counts, by = "pop") %>%
+  mutate(
+    H1 = ifelse(total > 0, H1 / total, 0),
+    H1D = ifelse(total > 0, H1D / total, 0),
+    H2 = ifelse(total > 0, H2 / total, 0),
+    H2D = ifelse(total > 0, H2D / total, 0)
+  ) %>%
+  dplyr::select(pop, total, H1, H1D, H2, H2D) %>%
+  mutate(N = total/2) %>%
+  dplyr::select(pop, N, H1, H1D, H2, H2D)
+
+colnames(CAAPA2_data_SUMMARY_GENO_haps_FINAL_wide)[1] <- "pop"
+
+AFR_summary_table_final <- rbind(AFR_summary_table_final, CAAPA2_data_SUMMARY_GENO_haps_FINAL_wide)
+
+# View the final table
+print(AFR_summary_table_final)
+
+#write.csv(AFR_summary_table_final, "~/Documents/datasets/metadata/final_AFR.csv", row.names = FALSE)
+```
+
+```{r Map of SOUTH African populations viz}
+# Define a maximum radius for the pies (tweak this based on visual needs)
+max_radius <- 2.5e5 + (1.2e5 * (200 / 2) / 100)
+
+max_radius <- 2.5e5  # Set maximum radius
+min_radius <- 1.0e4  # Set minimum radius
+
+CNV_points_sf <- data %>% st_as_sf(coords = c("long","lat"), crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+
+CNV_points_sf_t <- st_transform(CNV_points_sf, crs=crs_goode) %>% 
+  as_tibble() %>%
+  mutate(long=geometry %>% st_coordinates() %>% .[,"X"], lat=geometry %>% st_coordinates() %>% .[,"Y"]) 
+
+custom_fill_colors <- c("#00496F","#16879D", "#e27602", "#ee9f27")
+custom_border_colors <- c("white","white", "white", "white")
+
+scaled_data = CNV_points_sf_t %>% filter(!pop %in% c("ASW", "ACB"))
+
+# Define the limits for zoom (replace with the desired values based on your data)
+buffer = 15
+lon_min <- min(scaled_data$long) - buffer  # A small buffer around the minimum longitude
+lon_max <- max(scaled_data$long) + buffer  # A small buffer around the maximum longitude
+lat_min <- min(scaled_data$lat) - buffer   # A small buffer around the minimum latitude
+lat_max <- max(scaled_data$lat) + buffer   # A small buffer around the maximum latitude
+
+# size_legend_df <- data.frame(
+#   long = c(-25, -25, -25, -25), 
+#   lat = c(150, 150, 150, 150),
+#   size = c(10, 50, 100, 200)  # These are the sizes you want in the legend
+# )
+
+# Calculate consistent radii based on sample size
+# scaled_data <- scaled_data %>%
+#   mutate(r = sqrt(N) / max(sqrt(N)) * max_radius)
+
+scaled_data <- scaled_data 
+    #%>%
+    #mutate(r = ((N - 1) / (127 - 1)) * (max_radius - min_radius) + min_radius)
+
+g_Africa = ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85", color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_scatterpie(mapping=aes(x=long, y=lat, group=pop
+                              #r=r
+                              #r=(1.0e4 + (1.4e5 * (N / 2) / 100)),
+                              ),
+                  data=scaled_data %>% filter(!pop %in% c("ACB", "ASW")),
+                  cols=c("H1", "H1D", "H2", "H2D"),
+                  color = "white", # Set border color to white
+                  lwd = 0.05) +    # Thinner borders
+  coord_sf(crs = crs_goode, default_crs = crs_goode, 
+           xlim = c(lon_min, lon_max),   # Use transformed x limits
+           ylim = c(lat_min, lat_max)) +  # Use transformed y limits
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none",
+        #legend.position = "bottom",     
+        #legend.box.background = element_blank(), 
+        #legend.background = element_blank()
+        ) +   
+  scale_fill_manual(values = custom_fill_colors, name = "haplotype") + 
+  scale_color_manual(values = custom_border_colors, name = "haplotype") +
+  geom_label(data = scaled_data %>%
+               filter(pop %in% c("Khomani_San", "Mbuti", "Bench", "Nama", "Biaka", "Sheko", "LWK", "Fulani_Benin", "Mozabite", "Mandenka", "Saharawi")),
+             aes(x = long, y = lat, label = pop),
+             size = 1.9, hjust = 0.02, vjust = -0.02,
+             fill = "grey85",
+             color = "black")  # Adjust label position with hjust and vjust
+
+  #geom_point(data = size_legend_df, aes(x = long, y = lat, size = size), shape = 21, fill = "white", color = "grey") + 
+  # scale_size_continuous(name = "sample size (N)", 
+  #                       breaks = c(10, 50, 100, 200),  # Match the sizes to the pies
+  #                       labels = c("10", "50", "100", "200"),
+  #                       guide = guide_legend(nrow = 2))+ # Set legend items in new lines
+  # Add labels for the populations
+  
+# Save the plot as a PDF
+fn_out = paste("~/Documents/figures/maps and pies/allAfricans_SCALED.pdf")
+pdf(fn_out, width=9, height=12)
+print(g_Africa)
+dev.off()
+```
+
+```{r Map of EAST African populations viz}
+# Define a maximum radius for the pies (tweak this based on visual needs)
+max_radius <- 2.5e5 + (1.2e5 * (200 / 2) / 100)
+
+CNV_points_sf <- data %>% st_as_sf(coords = c("long","lat"), crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+
+CNV_points_sf_t <- st_transform(CNV_points_sf, crs=crs_goode) %>% 
+  as_tibble() %>%
+  mutate(long=geometry %>% st_coordinates() %>% .[,"X"], lat=geometry %>% st_coordinates() %>% .[,"Y"]) 
+
+custom_fill_colors <- c("#00496F","#16879D", "#e27602", "#ee9f27")
+custom_border_colors <- c("white","white", "white", "white")
+
+scaled_data = CNV_points_sf_t
+
+# Define the limits for zoom (replace with the desired values based on your data)
+buffer = 15
+lon_min <- min(scaled_data$long) - buffer  # A small buffer around the minimum longitude
+lon_max <- max(scaled_data$long) + buffer  # A small buffer around the maximum longitude
+lat_min <- min(scaled_data$lat) - buffer   # A small buffer around the minimum latitude
+lat_max <- max(scaled_data$lat) + buffer   # A small buffer around the maximum latitude
+
+# size_legend_df <- data.frame(
+#   long = c(-25, -25, -25, -25), 
+#   lat = c(150, 150, 150, 150),
+#   size = c(10, 50, 100, 200)  # These are the sizes you want in the legend
+# )
+
+# Calculate consistent radii based on sample size
+scaled_data <- scaled_data %>%
+  mutate(r = sqrt(N) / max(sqrt(N)) * max_radius)
+
+g_Europe = ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85", color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_scatterpie(mapping=aes(x=long, y=lat, group=pop,
+                              r=6.4e4
+                              #r=(1.0e4 + (1.4e5 * (N / 2) / 100)),
+                              ),
+                  data=scaled_data,
+                  cols=c("H1", "H1D", "H2", "H2D"),
+                  color = "white", # Set border color to white
+                  lwd = 0.05) +    # Thinner borders
+  coord_sf(crs = crs_goode, default_crs = crs_goode, 
+           xlim = c(lon_min, lon_max),   # Use transformed x limits
+           ylim = c(lat_min, lat_max)) +  # Use transformed y limits
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none",
+        #legend.position = "bottom",     
+        #legend.box.background = element_blank(), 
+        #legend.background = element_blank()
+        ) +   
+  scale_fill_manual(values = custom_fill_colors, name = "haplotype") + 
+  scale_color_manual(values = custom_border_colors, name = "haplotype") +
+  #geom_point(data = size_legend_df, aes(x = long, y = lat, size = size), shape = 21, fill = "white", color = "grey") + 
+  # scale_size_continuous(name = "sample size (N)", 
+  #                       breaks = c(10, 50, 100, 200),  # Match the sizes to the pies
+  #                       labels = c("10", "50", "100", "200"),
+  #                       guide = guide_legend(nrow = 2))+ # Set legend items in new lines
+  # Add labels for the populations
+  geom_label(data = scaled_data, 
+            aes(x = long, y = lat, label = pop), 
+            size = 1.9, hjust = 0, vjust = -1.15, 
+            fill = "grey85",
+            color = "black")  # Adjust label position with hjust and vjust
+
+# Save the plot as a PDF
+fn_out = paste("~/Documents/figures/maps and pies/EastAfrica.pdf")
+pdf(fn_out, width=3, height=9)
+print(g_Europe)
+dev.off()
+```
+
+```{r Map of African minus SOUTH and EAST}
+# Define a maximum radius for the pies (tweak this based on visual needs)
+max_radius <- 2.5e5 + (1.2e5 * (200 / 2) / 100)
+
+CNV_points_sf <- data %>% st_as_sf(coords = c("long","lat"), crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+
+CNV_points_sf_t <- st_transform(CNV_points_sf, crs=crs_goode) %>% 
+  as_tibble() %>%
+  mutate(long=geometry %>% st_coordinates() %>% .[,"X"], lat=geometry %>% st_coordinates() %>% .[,"Y"]) 
+
+custom_fill_colors <- c("#00496F","#16879D", "#e27602", "#ee9f27")
+custom_border_colors <- c("white","white", "white", "white")
+
+scaled_data = CNV_points_sf_t
+
+# Define the limits for zoom (replace with the desired values based on your data)
+buffer = 15
+lon_min <- min(scaled_data$long) - buffer  # A small buffer around the minimum longitude
+lon_max <- max(scaled_data$long) + buffer  # A small buffer around the maximum longitude
+lat_min <- min(scaled_data$lat) - buffer   # A small buffer around the minimum latitude
+lat_max <- max(scaled_data$lat) + buffer   # A small buffer around the maximum latitude
+
+# size_legend_df <- data.frame(
+#   long = c(-25, -25, -25, -25), 
+#   lat = c(150, 150, 150, 150),
+#   size = c(10, 50, 100, 200)  # These are the sizes you want in the legend
+# )
+
+# Calculate consistent radii based on sample size
+scaled_data <- scaled_data %>%
+  mutate(r = sqrt(N) / max(sqrt(N)) * max_radius)
+
+g_Europe = ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85", color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_scatterpie(mapping=aes(x=long, y=lat, group=pop,
+                              r=6.4e4
+                              #r=(1.0e4 + (1.4e5 * (N / 2) / 100)),
+                              ),
+                  data=scaled_data,
+                  cols=c("H1", "H1D", "H2", "H2D"),
+                  color = "white", # Set border color to white
+                  lwd = 0.05) +    # Thinner borders
+  coord_sf(crs = crs_goode, default_crs = crs_goode, 
+           xlim = c(lon_min, lon_max),   # Use transformed x limits
+           ylim = c(lat_min, lat_max)) +  # Use transformed y limits
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none",
+        #legend.position = "bottom",     
+        #legend.box.background = element_blank(), 
+        #legend.background = element_blank()
+        ) +   
+  scale_fill_manual(values = custom_fill_colors, name = "haplotype") + 
+  scale_color_manual(values = custom_border_colors, name = "haplotype") +
+  #geom_point(data = size_legend_df, aes(x = long, y = lat, size = size), shape = 21, fill = "white", color = "grey") + 
+  # scale_size_continuous(name = "sample size (N)", 
+  #                       breaks = c(10, 50, 100, 200),  # Match the sizes to the pies
+  #                       labels = c("10", "50", "100", "200"),
+  #                       guide = guide_legend(nrow = 2))+ # Set legend items in new lines
+  # Add labels for the populations
+  geom_label(data = scaled_data, 
+            aes(x = long, y = lat, label = pop), 
+            size = 1.9, hjust = 0, vjust = -1.15, 
+            fill = "grey85",
+            color = "black")  # Adjust label position with hjust and vjust
+
+# Save the plot as a PDF
+fn_out = paste("~/Documents/figures/maps and pies/NonEastSouthAfrica.pdf")
+pdf(fn_out, width=9, height=9)
+print(g_Europe)
+dev.off()
+```
+
+```{r plotting a map of South Asia with pie charts - GENERATING A PDF PLOT HERE}
+data_southAsia = data %>% filter(longitude >= 4 & latitude <= 40 & longitude >= 59 & latitude <= 98)
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+#Africa, Antarctica, Asia, Europe, H1, H1D, H1DD, H1DDD, H2, H2D, H2DD, North America, Oceania, Seven Seas, South America
+continent_pal <- c("#00496F", "#B4C424", "#E7720B", "#DD4124",
+                   "#edebec", "#edebec", "#edebec", "#edebec", "#edebec", "#edebec","#edebec",
+                   "#edebec",  "#edebec", "#edebec", "#edebec")
+
+south_asia_pie <- (ggulf <- ggplot(data = world) +
+  geom_sf(aes(fill = continent)) +
+  coord_sf(xlim = c(59, 98), ylim = c(4, 40), expand = FALSE) +
+  scale_fill_manual(values = continent_pal) +
+  geom_scatterpie(aes(x=longitude,
+                      y=latitude,
+                      group=pop,
+                      r=((total/2))*0.015),
+                      #r=((total/2))*0.015),
+                  data=data_southAsia,
+                  cols=c("H1", "H1D", "H2", "H2D"),
+                  #legend_name = "haplotype",
+                  color = NA) +
+  scale_colour_manual(breaks=c("H1", "H1D", "H1DD", "H2", "H2D"),
+                      values=c("#00496F","#16879D", "#e27602", "#ee9f27")) +
+  geom_text_repel(data = data %>% filter(pop %in% c("ITU", "PJL", "GIH", "STU", "Hazara", "Balochi", "Brahui", "Burusho", "Kalash", "Makrani", "Pathan", "BEB", "Sindhi")),
+                     aes(x = longitude, y = latitude, label = pop),
+                     size = 2,
+                     nudge_x = 1,
+                     nudge_y = 1,
+                     color = "black",
+                     segment.color = "grey50") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.major = element_line(color = "#C0C0C0", linetype = "solid"),
+        #legend.position = "bottom",
+        panel.background = element_rect(fill = "#FFFFFF"),
+        panel.border = element_rect(fill = NA)))
+  
+pdf("~/Documents/figures/maps and pies/south-asia-map_NEW_forSMBE_NEW.pdf", width = 7, height = 3.5)
+south_asia_pie
+dev.off()
+```
+
+```{r Stone age hunter gatherer maps}
+# Importing datasets
+KANSL1_17q21_ancient__3500.BP_invdup_table <- read.csv("~/Documents/datasets/reextendeddatafigure11cmarkdownfile/KANSL1_17q21_ancient__3500 BP_invdup_table.csv")
+KANSL1_17q21_ancient_4700.3500.BP_invdup_table <- read.csv("~/Documents/datasets/reextendeddatafigure11cmarkdownfile/KANSL1_17q21_ancient_4700-3500 BP_invdup_table.csv")
+KANSL1_17q21_ancient_6000.4700.BP_invdup_table <- read.csv("~/Documents/datasets/reextendeddatafigure11cmarkdownfile/KANSL1_17q21_ancient_6000-4700 BP_invdup_table.csv")
+KANSL1_17q21_ancient_8000.6000.BP_invdup_table <- read.csv("~/Documents/datasets/reextendeddatafigure11cmarkdownfile/KANSL1_17q21_ancient_8000-6000 BP_invdup_table.csv")
+KANSL1_17q21_ancient__8000.BP_invdup_table <- read.csv("~/Documents/datasets/reextendeddatafigure11cmarkdownfile/KANSL1_17q21_ancient__8000 BP_invdup_table.csv")
+
+# Add a new column to each dataframe indicating the dataset source
+KANSL1_17q21_ancient__3500.BP_invdup_table$dataset <- "3500bp"
+KANSL1_17q21_ancient_4700.3500.BP_invdup_table$dataset <- "4700_3500bp"
+KANSL1_17q21_ancient_6000.4700.BP_invdup_table$dataset <- "6000_4700bp"
+KANSL1_17q21_ancient_8000.6000.BP_invdup_table$dataset <- "8000_6000bp"
+KANSL1_17q21_ancient__8000.BP_invdup_table$dataset <- "8000bp"
+
+# Add a new column to each dataframe indicating the dataset source
+KANSL1_17q21_ancient__3500.BP_invdup_table$time <- -3500
+KANSL1_17q21_ancient_4700.3500.BP_invdup_table$time <- -4100
+KANSL1_17q21_ancient_6000.4700.BP_invdup_table$time <- -5350
+KANSL1_17q21_ancient_8000.6000.BP_invdup_table$time <- -7000
+KANSL1_17q21_ancient__8000.BP_invdup_table$time <- -8000
+
+
+# Merge all dataframes into one
+KANSL1_17q21_combined_invdup_table <- rbind(
+  KANSL1_17q21_ancient__3500.BP_invdup_table,
+  KANSL1_17q21_ancient_4700.3500.BP_invdup_table,
+  KANSL1_17q21_ancient_6000.4700.BP_invdup_table,
+  KANSL1_17q21_ancient_8000.6000.BP_invdup_table,
+  KANSL1_17q21_ancient__8000.BP_invdup_table
+)
+
+View(KANSL1_17q21_combined_invdup_table)
+
+# Load your dataset (replace 'your_dataframe' with your actual dataframe)
+df <- KANSL1_17q21_combined_invdup_table
+
+# Assign a unique y-position for each population
+df$y_pos <- as.numeric(factor(df$population, levels = unique(df$population)))
+
+# Define the custom colors
+custom_colors <- c("#00496F", "#C4C856", "#ED9106", "#E25B16")
+names(custom_colors) <- c("H1_NoDup", "H1_Dup", "H2_NoDup", "H2_Dup")
+
+# Function to create pie chart grob
+create_pie_chart_grob <- function(values) {
+  pie_data <- data.frame(
+    values = values,
+    category = c("H1_NoDup", "H1_Dup", "H2_NoDup", "H2_Dup")
+  )
+  
+  gg_pie <- ggplot(pie_data, aes(x = "", y = values, fill = category)) +
+    geom_bar(stat = "identity", width = 1) +
+    coord_polar("y") +
+    scale_fill_manual(values = custom_colors) +
+    theme_void() +
+    theme(legend.position = "none")
+  
+  return(ggplotGrob(gg_pie))
+}
+
+# Custom scaling function
+custom_scale <- function(samples) {
+  if (samples <= 5) {
+    return(0.3)  # Boost very small sample sizes
+  } else if (samples >= 300) {
+    return(1.0)  # Cap the largest sizes
+  } else {
+    return(0.3 + (samples - 5) / 295 * 0.7)  # Scale between small and large samples
+  }
+}
+
+# Create the base timeline plot
+p <- ggplot(df, aes(x = time, y = y_pos)) +
+  geom_point(size = 5, color = "white") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 12),
+        axis.title.y = element_blank(),
+        axis.ticks.y = element_blank()) +
+  xlab("Time (BP)") +
+  scale_y_continuous(
+    breaks = df$y_pos,
+    labels = df$population,
+    limits = c(min(df$y_pos) - 0.5, max(df$y_pos) + 0.5)  # Compress y-axis
+  ) +
+  scale_fill_manual(name = "Genotypes", values = custom_colors)
+
+# Add pie charts and labels
+for (i in seq_len(nrow(df))) {
+  values <- as.numeric(df[i, c("H1_NoDup", "H1_Dup", "H2_NoDup", "H2_Dup")])
+  pie_grob <- create_pie_chart_grob(values)
+  
+  # Apply custom scaling
+  size_adjustment <- custom_scale(df$samples[i])
+  
+  p <- p + annotation_custom(
+    pie_grob,
+    xmin = df$time[i] - 150 * size_adjustment,
+    xmax = df$time[i] + 150 * size_adjustment,
+    ymin = df$y_pos[i] - 0.25 * size_adjustment,
+    ymax = df$y_pos[i] + 0.25 * size_adjustment
+  )
+}
+
+p <- p + theme_classic() + facet_wrap(~population)
+```
+
+```{r}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+# Assuming df is already loaded with your combined dataset
+# Reshape the dataframe to long format
+df_long <- df %>%
+  pivot_longer(
+    cols = c("H1_NoDup", "H1_Dup", "H2_NoDup", "H2_Dup"),
+    names_to = "haplotype",
+    values_to = "count"
+  )
+
+# Calculate the proportion for each haplotype
+df_long <- df_long %>%
+  group_by(time, population) %>%
+  mutate(proportion = count / sum(count)) %>%
+  ungroup()
+
+df_long$haplotype <- recode(df_long$haplotype, 
+                            "H1_NoDup" = "H1", 
+                            "H1_Dup" = "H1D",
+                            "H2_NoDup" = "H2",
+                            "H2_Dup" = "H2D")
+
+# Create the plot
+p <- ggplot(df_long, aes(x = time, y = proportion, group = interaction(population, haplotype))) +
+  # Line plot: Connect points over time for each haplotype and population
+  geom_line(size = 0.5, alpha = 0.7) +
+  # Point plot: Size by sample size (N), color by population
+  geom_point(aes(size = samples, shape = population)) +
+  facet_wrap(~haplotype, ncol = 1, scales = "free_y") +
+  scale_size_continuous(name = "Sample Size (N)", range = c(2, 10)) +  # Scale dot size by sample size
+  scale_color_brewer(palette = "Set1", name = "Population") +  # Use a distinct color palette for populations
+  labs(
+    x = "age (BP)",
+    y = "frequency"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(size = 12),
+    legend.position = "right"
+  )
+
+
+# Display the plot
+print(p)
+```
+
+```{r}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+# Assuming df is already loaded with your combined dataset
+# Reshape the dataframe to long format
+df_long <- df %>%
+  pivot_longer(
+    cols = c("H1_NoDup", "H1_Dup", "H2_NoDup", "H2_Dup"),
+    names_to = "haplotype",
+    values_to = "count"
+  )
+
+# Combine all populations by aggregating sample counts and total counts at each time point
+df_aggregated <- df_long %>%
+  group_by(time, haplotype) %>%
+  summarize(
+    total_count = sum(count, na.rm = TRUE),
+    total_samples = sum(samples, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+# Calculate the proportion of each haplotype relative to the total count at each time point
+df_aggregated <- df_aggregated %>%
+  group_by(time) %>%
+  mutate(proportion = total_count / sum(total_count)) %>%
+  ungroup()
+
+# Add the present-day data
+present_day_data <- data.frame(
+  time = 0,
+  haplotype = c("H1_NoDup", "H1_Dup", "H2_NoDup", "H2_Dup"),
+  total_count = c(794, 274, 32, 296),  # Present-day counts
+  total_samples = sum(c(794, 274, 32, 296)),  # Total sample size for present day
+  proportion = c(0.5663338088, 0.1954350927, 0.0228245364, 0.2111269615)
+)
+
+# Combine the data
+df_combined <- bind_rows(df_aggregated, present_day_data)
+
+# Define the custom colors
+custom_colors <- c("#00496F", "#C4C856", "#ED9106", "#E25B16")
+names(custom_colors) <- c("H1_NoDup", "H1_Dup", "H2_NoDup", "H2_Dup")
+
+# Create the plot
+p <- ggplot(df_combined, aes(x = time, y = proportion, group = haplotype)) +
+  # Line plot: Connect points over time for each haplotype
+  geom_line(aes(color = haplotype), size = 0.5, alpha = 0.7) +
+  # Point plot: Size by aggregated sample size, color by haplotype, reduced alpha for overlapping dots
+  geom_point(aes(size = total_samples, color = haplotype), alpha = 0.6) +
+  scale_size_continuous(name = "Sample Size (N)", range = c(2, 10)) +  # Scale dot size by sample size
+  scale_color_manual(
+    values = custom_colors,
+    name = "Haplotype",
+    labels = c("H1", "H1D", "H2", "H2D"),  # Custom labels in desired order
+    breaks = c("H1_NoDup", "H1_Dup", "H2_NoDup", "H2_Dup")  # Ensure the correct order
+  ) +
+  labs(
+    x = "Time (BP)",
+    y = "Proportion"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 1),
+    legend.position = "right"
+  )
+
+# Display the plot
+print(p)
+```
+
+```{r plotting a map of Europe with pie charts - GENERATING A PDF PLOT HERE}
+my_crs <- 3832
+
+data <- data %>%
+  st_as_sf(coords = c("longitude", "latitude")) %>%
+  st_set_crs(4326) %>% 
+  st_transform(crs = my_crs) %>%
+  as_tibble() %>%
+  #ungroup() %>%
+  mutate(long=geometry %>% st_coordinates() %>% .[,"X"], lat=geometry %>% st_coordinates() %>% .[,"Y"]) %>%
+  #mutate(long=geometry %>% st_coordinates() %>% .[,"X"], lat=geometry %>% st_coordinates() %>% .[,"Y"]) %>%
+  #.[,-9]
+  dplyr::select(-c("geometry"))
+
+my_bbox <- st_bbox(c(xmin = -15, xmax = 25, ymax = 62, ymin = 35), crs = st_crs(4326)) %>%
+  st_as_sfc() %>%
+  st_transform(crs = my_crs) %>%
+  st_bbox()
+
+continent_pal <- c("#00496F","#16879D", "#e27602", "#ee9f27", 
+                   "#edebec", "#edebec", "#edebec", "#edebec",
+                   "#edebec",  "#edebec", "#edebec", "#edebec")
+
+# Filter European countries
+european_countries <- c("Spain", "France", "Germany", "Italy", "United Kingdom", "Portugal", "Greece", "Netherlands", "Belgium", "Austria", "Switzerland", "Sweden", "Norway", "Denmark", "Finland", "Ireland", "Poland", "Czech Republic", "Hungary", "Slovakia", "Slovenia", "Croatia", "Bulgaria", "Belarus", "Romania", "Estonia", "Latvia", "Lithuania", "Luxembourg", "Malta", "Cyprus", "Czechia", "Ukraine")
+
+#european_countries <- c("Spain", "Germany", "Italy", "United Kingdom", "Portugal", "Greece", "Netherlands", "Belgium", "Austria", "Switzerland", "Sweden", "Norway", "Denmark", "Finland", "Ireland", "Poland", "Czech Republic", "Hungary", "Slovakia", "Slovenia", "Croatia", "Bulgaria", "Romania", "Estonia", "Latvia", "Lithuania", "Luxembourg", "Malta", "Cyprus")
+
+europe_data <- world %>% filter(name %in% european_countries)
+
+europe_individual <- (ggulf <- ggplot(data = europe_data) +
+  #coord_sf() +
+  geom_sf(fill = "grey") +
+  coord_sf(crs = my_crs, default_crs = my_crs, xlim = c(my_bbox[['xmin']], my_bbox[['xmax']]), ylim = c(my_bbox[['ymin']],my_bbox[['ymax']]), expand = TRUE) +
+  scale_fill_manual(values = continent_pal) +
+  geom_scatterpie(aes(x=long,
+                      y=lat,
+                      group=pop,
+                      r=(1.5e5+(1.2e5*(Freq/2)/100))),
+                  data=data,
+                  cols=c("H1", "H1D", "H2", "H2D"),
+                  direction = "clockwise",
+                  legend_name = "haplotype",
+                  color = NA) +
+    geom_text_repel(data = data %>% filter(pop %in% c("FIN", "TSI", "Bergamo Italian", "French", "Sardinian", "IBS", "Basque", "French", "GBR", "Orcadian")),
+                     aes(x = long, y = lat, label = pop),
+                     size = 2,
+                     nudge_x = 1,
+                     nudge_y = 1,
+                     color = "black",
+                     segment.color = "grey50") +
+  scale_colour_manual(breaks=c("H1", "H1D", "H2", "H2D"), values=c("#00496F","#C4C856", "#ED9106", "#E25B16")))
+  #theme(legend.position = "bottom", 
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+        #panel.grid.major = element_line(color = "#C0C0C0", linetype = "solid"),
+        #panel.background = element_rect(fill = "#FFFFFF"),
+        #panel.border = element_rect(fill = NA)))
+
+pdf("~/Documents/figures/maps and pies/europe-map_NEW_NEW_NEW.pdf", width = 4, height = 2.5)
+europe_individual
+dev.off()
+```
+
+```{r creating a heatmap of the counts}
+#https://r-charts.com/correlation/heat-map-ggplot2/
+summary_table <- combined_summary_table %>% 
+  mutate(superpop = replace(superpop, superpop == "Central South Asia (HGDP)", "CSA")) %>%
+  mutate(superpop = replace(superpop, superpop == "Africa (HGDP)", "AFR")) %>%
+  mutate(superpop = replace(superpop, superpop == "America (HGDP)", "AMR")) %>%
+  mutate(superpop = replace(superpop, superpop == "Oceania (SGDP),Oceania (HGDP)", "OCN")) %>%
+  mutate(superpop = replace(superpop, superpop == "Europe (HGDP)", "EUR")) %>%
+  mutate(superpop = replace(superpop, superpop == "East Asia (HGDP)", "EAS")) %>%
+  mutate(superpop = replace(superpop, superpop == "Oceania (HGDP)", "OCN")) %>%
+  mutate(superpop = replace(superpop, superpop == "Middle East (HGDP)", "SAS")) %>%
+  group_by(superpop, complex_genotype) %>% 
+  drop_na() %>%
+  summarise(count = n(), .groups = "drop") %>%
+  complete(superpop, complex_genotype, fill = list(count = 0))
+
+summary_table <- summary_table[!summary_table$superpop == "EUR,AFR", ]
+
+# Calculate the total count for each superpop
+summary_table <- summary_table %>%
+  group_by(superpop) %>%
+  mutate(total_count = sum(count))
+
+# Calculate the proportion of count within each superpop
+summary_table <- summary_table %>%
+  mutate(normalized_count = count / total_count)
+
+summary_table$normalized_count <- ifelse(summary_table$normalized_count==0,NA,summary_table$normalized_count)
+
+counts_heatmap <- ggplot(summary_table, aes(x = reorder(complex_genotype, normalized_count), y = superpop, fill = normalized_count)) +
+  geom_tile(color = "white", lwd = 0.1, linetype = 1) +
+  geom_text(aes(label = count), color = "white", size = 4) +
+  coord_fixed() +
+  scale_fill_viridis_c(name = "", na.value = "white", direction = -1) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1),
+        axis.text.y = element_text(angle = 0))  # Keep y-axis labels horizontal
+
+pdf("~/Documents/figures/maps and pies/counts_heatmap.pdf", width = 8, height = 5)
+counts_heatmap
+dev.off()
+```
+
+```{r not using code after this chunk, but holding off on deleting it just in case it's useful at some point}
+
+```
+
+```{r rest of alma's code}
+fn_out = paste("./goode_homolosine_AMY1_6_12.pdf")
+pdf(fn_out,width=8,height=4)
+print(g)
+dev.off()
+
+amy_gene <- 'AMY2A'
+
+amy_points_sf <- amy_points_sf_allAMYs %>%
+                   filter(label == amy_gene) %>%
+                   st_as_sf(coords = c("long","lat"), crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+amy_points_sf_t <- st_transform(amy_points_sf, crs=crs_goode)
+
+print('AMY2A')
+min(amy_points_sf_t$average_cp)
+max(amy_points_sf_t$average_cp)
+
+g = ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85",color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_sf(data = amy_points_sf_t %>% arrange(-n),mapping = aes(color=average_cp,size=n),alpha=0.8) +
+  #geom_sf(data = amy_points_sf_t, size=2.5,mapping = aes(color=average_cp)) +
+  coord_sf(crs = crs_goode, default_crs = crs_goode) +
+  #scale_colour_viridis_c(name='Copy Number',option='inferno') +
+  theme_minimal_grid() +
+  #labs(fill="Copy Number") +
+  guides(color = guide_colorbar(title = 'Copy Number', order = 1), size = guide_legend(title = '# Individuals', order = 2)) +
+  scale_colour_viridis_c(name='Copy Number',option='inferno',limits=c(1.5,3),oob = scales::squish,breaks=c(1.5,2,2.5,3)) +
+  scale_size_continuous(range = c(0.8,3),breaks=c(1,50,100)) +
+  ggtitle(amy_gene)
+g
+
+fn_out = paste("./goode_homolosine_AMY2A_15_3.pdf")
+pdf(fn_out,width=8,height=4)
+print(g)
+dev.off()
+
+amy_gene <- 'AMY2B'
+
+amy_points_sf <- amy_points_sf_allAMYs %>%
+                   filter(label == amy_gene) %>%
+                   st_as_sf(coords = c("long","lat"), crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+amy_points_sf_t <- st_transform(amy_points_sf, crs=crs_goode)
+
+print('AMY2B')
+min(amy_points_sf_t$average_cp)
+max(amy_points_sf_t$average_cp)
+
+g = ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85",color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_sf(data = amy_points_sf_t %>% arrange(-n),mapping = aes(color=average_cp,size=n),alpha=0.8) +
+  #ADDING IN POPULATION NAMES:
+  #geom_sf_text(data = amy_points_sf_t %>% arrange(-n),aes(label=subpop),size=0.5,color='orange')+
+  #geom_sf(data = amy_points_sf_t, size=2.5,mapping = aes(color=average_cp)) +
+  coord_sf(crs = crs_goode, default_crs = crs_goode) +
+  #scale_colour_viridis_c(name='Copy Number',option='inferno') +
+  theme_minimal_grid() +
+  #labs(fill="Copy Number") +
+  guides(color = guide_colorbar(title = 'Copy Number', order = 1), size = guide_legend(title = '# Individuals', order = 2)) +
+  scale_size_continuous(range = c(0.8,3),breaks=c(1,50,100)) +
+  scale_colour_viridis_c(name='Copy Number',option='inferno',limits=c(2,2.5),oob = scales::squish,breaks=c(2,2.25,2.5)) +
+  ggtitle(amy_gene)
+g
+
+fn_out = paste("./goode_homolosine_AMY2B_2_25.pdf")
+pdf(fn_out,width=8,height=4)
+print(g)
+dev.off()
+
+```
+
+```{r SOME AS A POINT}
+CNV_points_sf <- CNV_points_sf_allCNV %>%
+                   st_as_sf(coords = c("long","lat"), crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+CNV_points_sf_t <- st_transform(CNV_points_sf, crs=crs_goode) %>% 
+  as_tibble() %>%
+  #ungroup() %>%
+  mutate(long=geometry %>% st_coordinates() %>% .[,"X"], lat=geometry %>% st_coordinates() %>% .[,"Y"]) 
+
+#define custom colors
+custom_fill_colors <- c("#00496F","#0A7492","#C4C856", "#ED9106", "#E25B16") 
+custom_border_colors <- c("#00496F","#0A7492","#C4C856", "#ED9106", "#E25B16")
+
+# Create jittered coordinates for the pie charts
+jitter_amount <- 1000  # Adjust this value for desired jitter amount
+CNV_points_sf_t_jittered <- CNV_points_sf_t %>%
+  mutate(
+    jittered_long = jitter(long, amount = jitter_amount),
+    jittered_lat = jitter(lat, amount = jitter_amount)
+  )
+
+# Apply the non-overlapping jitter to your data
+jittered_points <- jitter_non_overlapping(CNV_points_sf_t$long, CNV_points_sf_t$lat)
+CNV_points_sf_t <- cbind(CNV_points_sf_t, jittered_points)
+
+
+
+# scaled_data = CNV_points_sf_t_jittered %>%
+#                 mutate(jit_long = 0, 
+#                        jit_lat = 0)  %>%
+#                 mutate(jit_long = case_when(subpop == "Karitiana" ~ 1e6,
+#                                             TRUE ~ 0)) %>%
+#                 mutate(jit_long = case_when(subpop == "Karitiana" ~ 1e6,
+#                                             TRUE ~ 0))
+
+n= dim(CNV_points_sf_t_jittered)[1]
+set.seed(10) 
+lon_rand = runif(n,-1,1)
+set.seed(11)
+lat_rand = runif(n,-1,1)
+sfact_lat=4e5
+sfact_long=2e6
+
+scaled_data_replace = CNV_points_sf_t_jittered %>%
+                mutate(do_jit=1) %>%
+                mutate(jit_long = lon_rand*sfact_long*do_jit,
+                       jit_lat = lat_rand*sfact_lat*do_jit) %>%
+                mutate(contains_1 = rowSums(select(., H1, H1D, H1DD, H2, H2D) ==1) >0)
+
+H1_only <- scaled_data_replace %>%
+  filter(contains_1 == TRUE)
+
+pies <- scaled_data_replace %>%
+  filter(contains_1 == FALSE)
+
+pies_to_manually_move <- filter(pies, subpop == c("TSI ", 
+                                                  "Sardinian", 
+                                                  "IBS", 
+                                                  "Basque", 
+                                                  "French", 
+                                                  "Bergamo Italian", 
+                                                  "GIH", 
+                                                  "Makrani", 
+                                                  "Balochi", 
+                                                  "Brahui", 
+                                                  "Kalash", 
+                                                  "Burusho", 
+                                                  "Hazara", 
+                                                  "Pathan", 
+                                                  "Sindhi"))
+
+g = ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85",color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  #geom_segment(aes(x=long,xend=long+jit_long,y=lat,yend=lat+jit_lat),data=pies)+
+  #geom_point(data = H1_only, aes(x=long, y = lat, color = "#00496F", size = 2.5e5*num_individuals/100)) +
+  geom_label_repel(aes(x=long,y=lat,label=subpop),data=H1_only)+
+  geom_scatterpie(mapping=aes(x=long, y=lat, group=subpop, r=(2.5e5+(1.5e5*num_individuals/100))),
+                  data=pies,
+                  #position = position_jitter(width = 0.1, height = 0.1),
+                  cols=c("H1", "H1D", "H1DD", "H2", "H2D")) +
+  #geom_segment(aes(x=long,xend=long+jit_long,y=lat,yend=lat+jit_lat),data=pies)+
+  scale_size_continuous(range=c(5,10))+
+  geom_label_repel(aes(x=long,y=lat,label=subpop),data=pies)+
+  coord_sf(crs = crs_goode, default_crs = crs_goode) +
+  theme_minimal_grid() + 
+  #scale_size_continuous(range = c(0.8,3),breaks=c(1,50,100)) +
+  ggtitle("Global haplotype frequencies at the KANSL1 locus") +
+  scale_fill_manual(values = custom_fill_colors) +
+  scale_color_manual(values = custom_border_colors) 
+
+fn_out = paste("/Users/samvardhinisridharan/Documents/figures/maps and pies/world_map_gh.pdf")
+pdf(fn_out,width=34,height=12)
+print(g)
+dev.off()
+g
+
+```
+
+```{r plotting a world map with pie charts - GENERATING A PDF PLOT HERE}
+### link here: https://r-spatial.org/r/2018/10/25/ggplot2-sf-3.html
+
+world <- ne_countries(scale='medium',returnclass = 'sf')
+
+#Africa, Antarctica, Asia, Europe, H1, H1D, H2, H2D, North America, Oceania, Seven Seas, South America
+#continent_pal <- c("#edebec", "#edebec", "#edebec", "#edebec", "#00496F", "#0A718F","#EDA417", "#E7720B", "#edebec",  "#edebec", "#edebec", "#edebec")
+
+
+### link here: https://r-spatial.org/r/2018/10/25/ggplot2-sf-3.html
+
+#Africa, Antarctica, Asia, Europe, H1, H1D, H1DD, H2, H2D, North America, Oceania, Seven Seas, South America
+continent_pal <- c("#edebec", "#edebec", "#edebec", "#edebec", "#00496F","#0A7492","#C4C856", "#ED9106", "#E25B16", "#edebec",  "#edebec", "#edebec", "#edebec")
+
+all_populations <- (gworld <- ggplot(data = world) +
+  geom_sf(aes(fill = continent)) +
+    
+  #dashed rectangle for South Asia
+  geom_rect(xmin = 59, xmax = 98, ymin = 4, ymax = 40, 
+     fill = NA, colour = "black", linetype = 3, size = 0.5, alpha = 0.5) +
+  
+  #manually putting the axis in this... because scatterpie overrides (eyeroll)
+  coord_sf(xlim = c(-180, 180), ylim = c(-90, 90), expand = FALSE) +
+  
+  #dashed rectangle for Europe
+  geom_rect(xmin = -11, xmax = 50, ymin = 34, ymax = 75, 
+     fill = NA, colour = "black", linetype = 3, size = 0.5, alpha = 0.5) +
+  
+  scale_fill_manual(values = continent_pal) +
+ 
+  geom_scatterpie(aes(x=longitude, y=latitude, group=pop, r=3.5), data=freq_table_pop, cols=c("H1", "H1D", "H1DD", "H2", "H2D"), legend_name = "haplotype", color = NA) + 
+  
+  theme(legend.position = "right", 
+        panel.background = element_rect(fill = "#FFFFFF"),
+        axis.title.x = element_blank(), 
+        axis.title.y = element_blank(),
+        panel.grid.major = element_line(color = "#C0C0C0"),
+        #panel.grid.minor = element_line(color = "#C0C0C0"),
+        panel.border = element_rect(fill = NA)))
+
+pdf("~/Documents/figures/maps and pies/world-map.pdf", width = 8, height = 5)
+all_populations
+dev.off()
+```
+
+```{r data frame work... and work... and rework - RETIRING THIS DATAFRAME}
+combined_summary_table #from cnv-plotmaker
+
+drop <- c("lat", "long")
+combined_summary_table = combined_summary_table[, !(names(combined_summary_table) %in% drop)]
+
+#NOTE: Not all the populations have GPS coordinate data... that's not great but it's a start. 
+combined_summary_table <- combined_summary_table %>% left_join(sample_gpscoord_metadata)
+
+#combining populations from HGDP/SGDP/1000G when appropriate
+combined_summary_table <- combined_summary_table %>%
+  mutate(pop = replace(pop, pop == "Bergamo", "Bergamo Italian")) %>%
+  mutate(pop = replace(pop, pop == "Papuan Sepik", "Papuan")) %>%
+  mutate(pop = replace(pop, pop == "Papuan,Papuan Highlands", "Papuan")) %>%
+  mutate(pop = replace(pop, pop == "Papuan,Papuan Sepik", "Papuan")) %>%
+  mutate(pop = replace(pop, pop == "Punjabi", "PJL")) %>%
+  mutate(pop = replace(pop, pop == "Tuscan", "TSI")) %>%
+  mutate(pop = replace(pop, pop == "Japanese", "JPT"))
+
+data <- combined_summary_table
+colnames(data)[colnames(data) == "pop"] ="subpop"
+
+#manually changing the GPS coordinates of specific population
+data$latitude[data$subpop == "Bantu Kenya"] <- -0.0236 #Kenya
+data$longitude[data$subpop == "Bantu Kenya"] <- 37.9062
+data$latitude[data$subpop == "Bantu South Africa"] <- -30.5595 #South Africa
+data$longitude[data$subpop == "Bantu South Africa"] <- 22.9375
+data$latitude[data$subpop == "BantuHerero"] <- -22 #Namibia
+data$longitude[data$subpop == "BantuHerero"] <- 17
+data$latitude[data$subpop == "BantuTswana"] <- -22.3285 #Botswana
+data$longitude[data$subpop == "BantuTswana"] <- 24.6849
+data$latitude[data$subpop == "BantuTswana"] <- -22.3285 #Botswana
+data$longitude[data$subpop == "BantuTswana"] <- 24.6849
+data$latitude[data$subpop == "Bergamo"] <- 45.6983 #Bergamo
+data$longitude[data$subpop == "Bergamo"] <- -9.6773
+data$latitude[data$subpop == "Bergamo Italian"] <- 45.6983 #Bergamo
+data$longitude[data$subpop == "Begamo Italian"] <- -9.6773
+data$latitude[data$subpop == "Biaka"] <- 6.6111 #Central African Republic
+data$longitude[data$subpop == "Biaka"] <- 20.9394
+data$latitude[data$subpop == "Bougainville"] <- -6.375 #Papua New Guinea
+data$longitude[data$subpop == "Bougainville"] <- 155.3807
+data$latitude[data$subpop == "Ju_hoan_North"] <- -22.3285 #Botswana
+data$longitude[data$subpop == "Ju_hoan_North"] <- 24.6849
+data$latitude[data$subpop == "Mongolian"] <- 46.8625 #Mongolia
+data$longitude[data$subpop == "Mongolian"] <- 103.8467
+data$latitude[data$subpop == "Northern Han"] <- 37.8734 #Sanxi China
+data$longitude[data$subpop == "Northern Han"] <- 112.5627
+data$latitude[data$subpop == "Mbuti"] <- -4.0383 #Congo
+data$longitude[data$subpop == "Mbuti"] <- 21.7587 
+data$latitude[data$subpop == "Palestinian"] <- 32.000000 #for some reason there were two of these...
+data$longitude[data$subpop == "Palestinian"] <- 35 
+data$latitude[data$subpop == "Basque"] <- 43 #for some reason there were two of these...
+data$longitude[data$subpop == "Basque"] <- 0 
+data$latitude[data$subpop == "Oroqen"] <- 40.8173 #Inner Mongolia
+data$longitude[data$subpop == "Oroqen"] <- 111.7652
+data$latitude[data$subpop == "Pathan"] <- 33.487006 #moving Pathan so that it doesn't overlap with Hazara
+data$longitude[data$subpop == "Pathan"] <- 67
+data$latitude[data$subpop == "Brahui"] <- 27 #moving Brahui so that it doesn't overlap with Hazara
+data$longitude[data$subpop == "Brahui"] <- 66.500000
+
+##adding lat and long value data to table when missing from metadata
+data <- data %>%
+  mutate(latitude = ifelse(subpop == "KHV", 10.776667, latitude),
+         longitude = ifelse(subpop == "KHV", 106.681667, longitude),
+         latitude = ifelse(subpop == "MSL", 8.484450, latitude),
+         longitude = ifelse(subpop == "MSL", -13.234450, longitude),
+         latitude = ifelse(subpop == "CHS", 23.133333, latitude),
+         longitude = ifelse(subpop == "CHS", 113.266667, longitude),
+         latitude = ifelse(subpop == "IBS", 40.383333, latitude),
+         longitude = ifelse(subpop == "IBS", -3.716667, longitude),
+         latitude = ifelse(subpop == "CLM", 4.583333, latitude),
+         longitude = ifelse(subpop == "CLM", -74.066667, longitude),
+         latitude = ifelse(subpop == "CEU", 40.320980, latitude),
+         longitude = ifelse(subpop == "CEU", -111.093731, longitude),
+         latitude = ifelse(subpop == "ITU", 17.366000, latitude),
+         longitude = ifelse(subpop == "ITU", 78.476000, longitude),
+         latitude = ifelse(subpop == "BEB", 23.700000, latitude),
+         longitude = ifelse(subpop == "BEB", 90.350000, longitude),
+         latitude = ifelse(subpop == "ASW", 35.481670, latitude),
+         longitude = ifelse(subpop == "ASW", -97.533330, longitude),
+         latitude = ifelse(subpop == "PUR", 18.450000, latitude),
+         longitude = ifelse(subpop == "PUR", -66.100000, longitude),
+         latitude = ifelse(subpop == "TSI", 43.066667, latitude),
+         longitude = ifelse(subpop == "TSI", 12.000000, longitude),
+         latitude = ifelse(subpop == "ACB", 13.100000, latitude),
+         longitude = ifelse(subpop == "ACB", -59.616670, longitude),
+         latitude = ifelse(subpop == "PEL", -12.041667, latitude),
+         longitude = ifelse(subpop == "PEL", -77.028333, longitude),
+         latitude = ifelse(subpop == "JPT", 35.683333, latitude),
+         longitude = ifelse(subpop == "JPT", 139.683333, longitude),
+         latitude = ifelse(subpop == "ESN", 9.066667, latitude),
+         longitude = ifelse(subpop == "ESN", 7.483333, longitude),
+         latitude = ifelse(subpop == "PJL", 31.550000, latitude),
+         longitude = ifelse(subpop == "PJL", 74.341667, longitude),
+         latitude = ifelse(subpop == "MXL", 19.433333, latitude),
+         longitude = ifelse(subpop == "MXL", -99.133333, longitude),
+         latitude = ifelse(subpop == "GWD", 13.466667, latitude),
+         longitude = ifelse(subpop == "GWD", -16.600000, longitude),
+         latitude = ifelse(subpop == "STU", 6.900000, latitude),
+         longitude = ifelse(subpop == "STU", 79.900000, longitude),
+         latitude = ifelse(subpop == "FIN", 60.168333, latitude),
+         longitude = ifelse(subpop == "FIN", 24.935000, longitude),
+         latitude = ifelse(subpop == "LWK", -1.266667, latitude),
+         longitude = ifelse(subpop == "LWK", 36.800000, longitude),
+         latitude = ifelse(subpop == "GBR", 52.833333, latitude),
+         longitude = ifelse(subpop == "GBR", -1.891667, longitude),
+         latitude = ifelse(subpop == "Mozabite", 32.000000, latitude),
+         longitude = ifelse(subpop == "Mozabite", 3.000000, longitude),
+         latitude = ifelse(subpop == "Uygur", 44.000000, latitude),
+         longitude = ifelse(subpop == "Uygur", 81.000000, longitude),
+         latitude = ifelse(subpop == "Daur", 48.497534, latitude),
+         longitude = ifelse(subpop == "Daur", 124.000000, longitude),
+         latitude = ifelse(subpop == "Bedouin", 31.000000, latitude),
+         longitude = ifelse(subpop == "Bedouin", 35.000000, longitude),
+         latitude = ifelse(subpop == "Brahui", 30.498715, latitude),
+         longitude = ifelse(subpop == "Brahui", 66.500000, longitude),
+         latitude = ifelse(subpop == "Oroquen", 50.433893, latitude),
+         longitude = ifelse(subpop == "Oroquen", 126.500000, longitude),
+         latitude = ifelse(subpop == "Oroquen", 50.433893, latitude),
+         longitude = ifelse(subpop == "Oroquen", 126.500000, longitude),
+         latitude = ifelse(subpop == "Bergamo Italian", 45.698300, latitude),
+         longitude = ifelse(subpop == "Bergamo Italian", 0.000000, longitude),
+         latitude = ifelse(subpop == "Estonian", 58.5953, latitude),
+         longitude = ifelse(subpop == "Estonian", 25.0136, longitude),
+         latitude = ifelse(subpop == "Dinka", 6.8770, latitude),
+         longitude = ifelse(subpop == "Dinka", 31.3070, longitude),
+         latitude = ifelse(subpop == "Makrani", 26.000000, latitude),
+         longitude = ifelse(subpop == "Makrani", 64.000000, longitude),
+         latitude = ifelse(subpop == "Crete", 35.2401, latitude),
+         longitude = ifelse(subpop == "Crete", 24.8093, longitude),
+         latitude = ifelse(subpop == "Norwegian", 60.4720, latitude),
+         longitude = ifelse(subpop == "Norwegian", 8.4689, longitude)
+  )
+
+unique_lat_long <- data %>% select(subpop, latitude, longitude) %>% distinct()
+
+#summary table with haplotype frequencies (dropped na values)
+#by population
+freq_table_pop <- data %>% drop_na() %>%
+                  pivot_longer(-c("sample", "dataset", "genotype", "complex_genotype", "subpop", "superpop", "latitude", "longitude")) %>%
+                  rename(haplotype = name) %>% group_by(subpop) %>% count(value) %>% mutate(freq = prop.table(n))
+
+#adding GPS information to this table, along with renaming values
+freq_table_pop <- freq_table_pop %>% left_join(unique_lat_long) %>%
+  rename(haplotype = value) %>%
+  select(-c(n))
+
+# If you want to count the occurrences of each pop as well
+pop_counts <- combined_summary_table %>% drop_na() %>% group_by(pop) %>% summarise(num_individuals = n_distinct(sample))
+colnames(pop_counts)[colnames(pop_counts) == "pop"] ="subpop"
+
+merged_data <- freq_table_pop %>% left_join(pop_counts, by = "subpop")
+
+wide_format_data <- merged_data %>% spread(key = haplotype, value = freq)
+
+# Fill missing values with 0
+wide_format_data[is.na(wide_format_data)] <- 0
+
+data <- wide_format_data
+
+data <- data[!data$subpop == "IBS,MSL", ]
+```
+
+```{r Extended data figure}
+# Step 1: Load the data
+extended_data_figure <- read_csv("~/Documents/datasets/supplementary_table_3_FINAL.csv")
+
+# Step 2: Split the complex genotype into two haplotypes
+extended_data_figure <- extended_data_figure %>%
+  separate(complex_genotype, into = c("hap1", "hap2"), sep = "/")
+
+# Step 3: Reshape to long format (one haplotype per row)
+extended_data_figure_long <- extended_data_figure %>%
+  pivot_longer(cols = c(hap1, hap2), 
+               names_to = "hap_num", 
+               values_to = "haplotype_concat")
+
+# Step 4: Count haplotype occurrences per population
+haplotype_counts <- extended_data_figure_long %>%
+  count(pop, haplotype_concat, name = "count")
+
+# Step 5: Calculate haplotype frequencies per population
+haplotype_frequencies <- haplotype_counts %>%
+  group_by(pop) %>%
+  mutate(frequency = count / sum(count)) %>%
+  ungroup()
+
+# Step 6: View result
+print(haplotype_frequencies)
+```
+

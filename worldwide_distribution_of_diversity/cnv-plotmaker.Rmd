@@ -1,0 +1,1407 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r loading libraries}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(PNWColors)
+library(reshape2)
+```
+
+```{r data merging and data cleanup: 1000G}
+
+# Read depth, metadata, and genotype data
+KG_readdepth <- read.delim("~/Documents/notebooks/cnv-plots/1000G_readdepth_NEW_CLEAN.txt")
+KG_metadata <- read.delim("~/Documents/notebooks/cnv-plots/igsr_samples_NEW.tsv")
+KG_genotype_data <- read.csv("~/Documents/datasets/metadata/hg38_hgdp_tgp_metadata.csv") 
+
+#renaming the columns that I plan to merge into the new dataframe
+KG_metadata_UPDATED <- dplyr::rename(
+    KG_metadata,
+    sample = `Sample.name`,
+    sex = `Sex`, 
+    pop = `Population.code`, 
+    population_name = `Population.name`,
+    superpop = `Superpopulation.code`
+  )
+
+kg_cnv <- KG_readdepth %>%
+  left_join(KG_metadata_UPDATED)
+
+kg_cnv <- kg_cnv %>%
+  left_join(KG_genotype_data, by = c('sample' = 'sample_id'))
+
+#removing outliers from the dataset
+read_depths <- kg_cnv$read_depth
+q1 <- quantile(read_depths, 0.25, na.rm = TRUE)
+q3 <- quantile(read_depths, 0.75, na.rm = TRUE)
+iqr <- q3 - q1
+lower_bound <- q1 - 1.5 * iqr
+upper_bound <- q3 + 1.5 * iqr
+
+kg_final_cnv <- kg_cnv[read_depths >= 0 & read_depths <= 10,]
+
+#misc cleanup - reordering the columns
+kg_final_cnv <- kg_final_cnv[, c("sample", "genotype", "sex", "pop", "superpop", "chromosome", "normalizing_factor", "window_start", "window_end", "read_depth")]
+```
+
+```{r determining the average CNV over the H1 and H2 blocks: 1000G}
+#overall block in hg38: [46000000,46310000]
+#H1 block: [46095000,46123000]
+#H2 block: [46143000,46238000]
+
+H1_start_pos <- 46095000
+H1_end_pos <- 46123000
+H2_start_pos <- 46143000
+H2_end_pos <- 46238000
+
+# Calculate the average copy number for the H1 block per sample
+average_H1 <- kg_final_cnv %>% 
+  filter(window_start >= H1_start_pos & window_start <= H1_end_pos) %>%
+  group_by(sample) %>%
+  summarize(CN_H1 = mean(read_depth, na.rm = TRUE))
+
+# Calculate the average copy number for the H2 block per sample
+average_H2 <- kg_final_cnv %>% 
+  filter(window_start >= H2_start_pos & window_start <= H2_end_pos) %>%
+  group_by(sample) %>%
+  summarize(CN_H2 = mean(read_depth, na.rm = TRUE))
+
+# Combine the H1 and H2 average copy number data
+averages_H1_H2 <- average_H1 %>% 
+  left_join(average_H2, by = "sample")
+
+#highlighting these 3 samples
+#highlight_samples <- c("HG00637", "HG03922", "NA19445")
+highlight_samples <- c("HG00637", "HG03922", "NA19445")
+
+# Visualize the relationship between H1 and H2 average copy numbers
+copy_number_sp <- ggplot(averages_H1_H2, aes(x = CN_H1, y = CN_H2)) + 
+  geom_jitter(aes(color = ifelse(sample %in% highlight_samples, "Highlight", "Other")),
+              width = 0.3, height = 0.3) + 
+  #geom_point() + 
+  labs(title = "Scatter plot of CNV between H1 and H2 blocks",
+       x = "Average CN H1",
+       y = "Average CN H2") +
+  scale_color_manual(values = c("Highlight" = 'red', "Other" = 'black'))
+
+copy_number_sp  # Display the plot
+
+# Merge the calculated averages back into the original dataset
+kg_final_cnv <- kg_final_cnv %>% 
+  left_join(averages_H1_H2, by = "sample")
+```
+
+```{r assigning a SPECIFIC/COMPLEX genotype to each individual: 1000G}
+
+#first, assign sectors. Possible naming conventions are where it's clustered? Sector 2_2, Sector 2_3, Sector 2_4 etc
+#the margins should probably be +/- 0.5
+
+kg_final_cnv <- kg_final_cnv %>%
+  dplyr::mutate(sector = 
+           dplyr::case_when(
+             (CN_H1 >= 1.5 & CN_H1 <= 2.5 & CN_H2 >= 1.5 & CN_H2 <= 2.5) ~ "2_2",
+             (CN_H1 >= 1.5 & CN_H1 <= 2.5 & CN_H2 >= 2.5 & CN_H2 <= 3.5) ~ "2_3",
+             (CN_H1 >= 1.5 & CN_H1 <= 2.5 & CN_H2 >= 3.5 & CN_H2 <= 4.5) ~ "2_4",
+             (CN_H1 >= 2.5 & CN_H1 <= 3.5 & CN_H2 >= 2.5 & CN_H2 <= 3.5) ~ "3_3",
+             (CN_H1 >= 2.5 & CN_H1 <= 3.5 & CN_H2 >= 3.5 & CN_H2 <= 4.5) ~ "3_4",
+             (CN_H1 >= 3.5 & CN_H1 <= 4.5 & CN_H2 >= 3.5 & CN_H2 <= 4.5) ~ "4_4",
+             (CN_H1 >= 3.5 & CN_H1 <= 4.5 & CN_H2 >= 4.5 & CN_H2 <= 5.5) ~ "4_5",
+             (CN_H1 >= 4.5 & CN_H1 <= 5.5 & CN_H2 >= 4.5 & CN_H2 <= 5.5) ~ "5_5",
+           ))
+
+#second, reconcile inversion status and duplication status (use matrix developed at the last lab meeting)
+kg_final_cnv <- kg_final_cnv %>%
+  mutate(complex_genotype =
+           case_when(
+             (genotype == "H1H1" & sector == "2_2") ~ "H1/H1",
+             (genotype == "H1H2" & sector == "2_2") ~ "H1/H2",
+             (genotype == "H2H2" & sector == "2_2") ~ "H2/H2",
+             
+             (genotype == "H1H1" & sector == "3_3") ~ "H1/H1D",
+             (genotype == "H1H1" & sector == "4_4") ~ "H1D/H1D", #note this could also be H1/H1DD 
+             (genotype == "H1H1" & sector == "5_5") ~ "H1D/H1DD", #note this could also be H1/H1DDD
+             
+             (genotype == "H1H2" & sector == "2_3") ~ "H1/H2D",
+             (genotype == "H1H2" & sector == "3_3") ~ "H1D/H2",
+             (genotype == "H1H2" & sector == "3_4") ~ "H1D/H2D",
+             (genotype == "H1H2" & sector == "4_4") ~ "H1DD/H2",
+             (genotype == "H1H2" & sector == "4_5") ~ "H1DD/H2D",
+             (genotype == "H1H2" & sector == "5_3") ~ "H1DDD/H2",
+             
+             (genotype == "H2H2" & sector == "2_3") ~ "H2/H2D",
+             (genotype == "H2H2" & sector == "2_4") ~ "H2D/H2D"
+           ))
+
+kg_final_cnv <- kg_final_cnv[, c("sample", "genotype", "sector", "complex_genotype", "sex", "pop", "superpop", "chromosome", "normalizing_factor", "window_start", "window_end", "read_depth")]
+
+copy_number_sp <- ggplot(averages_H1_H2, aes(x = CN_H1, y = CN_H2)) + 
+  geom_point() 
+  #geom_point(data = subset(averages_H1_H2, sample %in% na_rows_SGDP$sample), aes(CN_H1, CN_H2, color = "pink"))
+  #geom_text(data = subset(combined_summary_table[is.na(combined_summary_table$complex_genotype),]))
+copy_number_sp 
+
+averages_H1_H2_tgp <- merge(kg_final_cnv, averages_H1_H2, by = "sample") 
+
+averages_H1_H2_tgp <- averages_H1_H2_tgp %>%
+  select(sample, genotype, complex_genotype, CN_H1, CN_H2) %>%
+  distinct()
+  
+
+copy_number_sp <- ggplot(averages_H1_H2_tgp %>% 
+                           filter(!is.na(CN_H1), !is.na(CN_H2), !is.na(complex_genotype)) %>%
+                           filter(CN_H1 > 0) %>% 
+                           filter(CN_H2 > 0), 
+                         aes(x = CN_H1, y = CN_H2, color = genotype)) + 
+  #geom_point() + 
+  geom_jitter(width = 0.05, height = 0.05, alpha = 0.4) +  # jitter + transparency
+  scale_color_manual(values = c("#00496F", "#DD4124", "#CFCC52")) +
+  theme_bw()
+
+# Step 5: Save to PDF
+pdf("~/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/SupplementalFigure4A_v4.pdf", width = 8.5, height = 8.5 )
+print(copy_number_sp)
+dev.off()
+```
+
+```{r}
+# Load necessary library
+library(dplyr)
+
+# Sector Classification Data Frame
+sector_classification <- data.frame(
+  Sector = c("2_2", "2_3", "2_4", "3_3", "3_4", "4_4", "4_5", "5_5"),
+  CN_H1_Range = c("1.5 - 2.5", "1.5 - 2.5", "1.5 - 2.5", "2.5 - 3.5", "2.5 - 3.5", "3.5 - 4.5", "3.5 - 4.5", "4.5 - 5.5"),
+  CN_H2_Range = c("1.5 - 2.5", "2.5 - 3.5", "3.5 - 4.5", "2.5 - 3.5", "3.5 - 4.5", "3.5 - 4.5", "4.5 - 5.5", "4.5 - 5.5")
+)
+
+# Print Sector Classification Table
+print("Sector Classification Table:")
+print(sector_classification)
+
+# Complex Genotype Reconciliation Data Frame
+genotype_reconciliation <- data.frame(
+  Genotype = c("H1H1", "H1H2", "H2H2", "H1H1", "H1H1", "H1H1", "H1H2", "H1H2", "H1H2", "H1H2", "H1H2", "H1H2", "H2H2", "H2H2"),
+  Sector = c("2_2", "2_2", "2_2", "3_3", "4_4", "5_5", "2_3", "3_3", "3_4", "4_4", "4_5", "5_3", "2_3", "2_4"),
+  Complex_Genotype = c("H1/H1", "H1/H2", "H2/H2", "H1/H1D", "H1D/H1D", "H1D/H1DD", "H1/H2D", "H1D/H2", "H1D/H2D", "H1DD/H2", "H1DD/H2D", "H1DDD/H2", "H2/H2D", "H2D/H2D")
+)
+
+# Print Complex Genotype Reconciliation Table
+print("Complex Genotype Reconciliation Table:")
+print(genotype_reconciliation)
+```
+
+```{r plotting CNV in the 1000G dataset as copy number over the genomic region}
+ggplot(
+  kg_final_cnv %>% filter(sample %in% c("HG01784", "NA19836", "HG00099", "HG00096", "HG00140")) %>% filter(window_start >= 46000000 & window_start <= 46310000),
+  aes(x = window_start, y = read_depth)) +
+  geom_point(aes(color = sample), size = 0.25) +
+  geom_line(aes(group = sample, color = sample)) 
+  #+
+  #+
+  #+
+  #facet_grid(complex_genotype ~.)
+```
+
+```{r summary statistics on the 1KG dataset}
+kg_summary_table <- distinct(kg_final_cnv, pick(c("sample", "genotype", "complex_genotype", "pop", "superpop")))
+
+#some things of note: 
+# 1KG has a total of 2388 individuals 
+# 9 individuals do not have a complex genotype. This could either be due to mismatch (?) or read depth issues (i.e. read depth was outputted as 0)
+kg_summary_table %>%
+  count(complex_genotype)
+
+# adding in the different haplotypes (hap1 and hap2) - this will help with the world map
+kg_summary_table <- kg_summary_table %>%
+  mutate(hap1 = 
+           case_when(
+             (complex_genotype == "H1/H1") ~ "H1",
+             (complex_genotype == "H1/H1D") ~ "H1",
+             (complex_genotype == "H1/H2") ~ "H1",
+             (complex_genotype == "H1/H2D") ~ "H1",
+             (complex_genotype == "H1D/H1D") ~ "H1D",
+             (complex_genotype == "H1D/H1DD") ~ "H1D",
+             (complex_genotype == "H1D/H2") ~ "H1D",
+             (complex_genotype == "H1D/H2D") ~ "H1D",
+             (complex_genotype == "H1DD/H2D") ~ "H1DD",
+             (complex_genotype == "H2/H2") ~ "H2",
+             (complex_genotype == "H2/H2D") ~ "H2",
+             (complex_genotype == "H2D/H2D") ~ "H2D"
+           ))
+
+kg_summary_table <- kg_summary_table %>%
+  mutate(hap2 = 
+           case_when(
+             (complex_genotype == "H1/H1") ~ "H1",
+             (complex_genotype == "H1/H1D") ~ "H1D",
+             (complex_genotype == "H1/H2") ~ "H2",
+             (complex_genotype == "H1/H2D") ~ "H2D",
+             (complex_genotype == "H1D/H1D") ~ "H1D",
+             (complex_genotype == "H1D/H1DD") ~ "H1DD",
+             (complex_genotype == "H1D/H2") ~ "H2",
+             (complex_genotype == "H1D/H2D") ~ "H2D",
+             (complex_genotype == "H1DD/H2D") ~ "H2D",
+             (complex_genotype == "H2/H2") ~ "H2",
+             (complex_genotype == "H2/H2D") ~ "H2D",
+             (complex_genotype == "H2D/H2D") ~ "H2D"
+           ))
+
+kg_summary_table <- kg_summary_table[, c("sample", "genotype", "complex_genotype", "hap1", "hap2", "pop", "superpop")]
+```
+
+```{r data merging and data cleanup: HGDP}
+HGDP_readdepth <- read.delim("~/Documents/notebooks/cnv-plots/HGDP_readdepth_CLEAN.txt")
+
+HGDP_metadata <- read.delim("~/Documents/notebooks/cnv-plots/igsr-human genome diversity project.tsv.tsv")
+
+##TODO: READ IN THE GENOTYPE INFORMATION
+#HGDP_genotype_data <- read.delim("~/Documents/notebooks/cnv-plots/samples_HGDP_consolidated.txt")
+HGDP_genotype_data <- read.csv("~/Documents/datasets/metadata/hg38_hgdp_tgp_metadata.csv") 
+
+#renaming the columns that I plan to merge into the new dataframe
+HGDP_metadata_UPDATED <- HGDP_metadata %>%
+  rename(
+    sample = Sample.name,
+    sex = Sex, 
+    pop = Population.name,
+    superpop = Superpopulation.name, 
+  )
+
+#selecting the necessary files from the dataframe
+#HGDP_metadata_UPDATED <- HGDP_metadata_UPDATED %>%
+  #select(sample, sex, pop, superpop)
+
+#the merge!
+HGDP_cnv <- HGDP_readdepth %>%
+  left_join(HGDP_metadata_UPDATED)
+
+HGDP_cnv <- HGDP_cnv %>%
+  left_join(HGDP_genotype_data, by = c('sample' = 'sample_id'))
+
+#removing outliers from the dataset
+read_depths <- HGDP_cnv$read_depth
+q1 <- quantile(read_depths, 0.25, na.rm = TRUE)
+q3 <- quantile(read_depths, 0.75, na.rm = TRUE)
+iqr <- q3 - q1
+lower_bound <- q1 - 1.5 * iqr
+upper_bound <- q3 + 1.5 * iqr
+
+HGDP_cnv <- HGDP_cnv[read_depths >= 0 & read_depths <= 20,]
+
+#misc cleanup - reordering the columns
+HGDP_final_cnv <- HGDP_cnv[, c("sample", "genotype", "sex", "pop", "superpop", "chromosome", "normalizing_factor", "window_start", "window_end", "read_depth")]
+```
+
+```{r determining the average CNV over the H1 and H2 blocks: HGDP}
+#overall block in hg38: [46000000,46310000]
+#H1 block: [46095000,46123000]
+#H2 block: [46143000,46238000]
+
+H1_start_pos = 46095000
+H1_end_pos = 46123000
+H2_start_pos = 46143000
+H2_end_pos = 46238000
+
+
+average_H1 <- HGDP_final_cnv %>% 
+  filter(window_start >= H1_start_pos & window_start <= H1_end_pos) %>%
+  group_by(sample) %>%
+  summarize(CN_H1 = mean(read_depth))
+
+average_H2 <- HGDP_final_cnv %>% 
+  filter(window_start >= H2_start_pos & window_start <= H2_end_pos) %>%
+  group_by(sample) %>%
+  summarize(CN_H2 = mean(read_depth))
+
+averages_H1_H2 <- average_H1 %>% left_join(average_H2)
+
+copy_number_sp <- ggplot(averages_H1_H2, aes(x = CN_H1, y = CN_H2)) + geom_point()
+copy_number_sp #clusters pretty well!
+
+#final step is to merge the HGDP_final_cnv with the columns in averages_H1_H2
+HGDP_final_cnv <- HGDP_final_cnv %>% left_join(averages_H1_H2)
+```
+
+```{r assigning a SPECIFIC/COMPLEX genotype to each individual: HGDP}
+
+#first, assign sectors. Possible naming conventions are where it's clustered? Sector 2_2, Sector 2_3, Sector 2_4 etc
+#the margins should probably be +/- 0.5
+
+HGDP_final_cnv <- HGDP_final_cnv %>%
+  mutate(sector = 
+           case_when(
+             (CN_H1 >= 1.5 & CN_H1 <= 2.5 & CN_H2 >= 1.5 & CN_H2 <= 2.5) ~ "2_2",
+             (CN_H1 >= 1.5 & CN_H1 <= 2.5 & CN_H2 >= 2.5 & CN_H2 <= 3.5) ~ "2_3",
+             (CN_H1 >= 1.5 & CN_H1 <= 2.5 & CN_H2 >= 3.5 & CN_H2 <= 4.5) ~ "2_4",
+             (CN_H1 >= 2.5 & CN_H1 <= 3.5 & CN_H2 >= 2.5 & CN_H2 <= 3.5) ~ "3_3",
+             (CN_H1 >= 2.5 & CN_H1 <= 3.5 & CN_H2 >= 3.5 & CN_H2 <= 4.5) ~ "3_4",
+             (CN_H1 >= 3.5 & CN_H1 <= 4.5 & CN_H2 >= 3.5 & CN_H2 <= 4.5) ~ "4_4",
+             (CN_H1 >= 3.5 & CN_H1 <= 4.5 & CN_H2 >= 4.5 & CN_H2 <= 5.5) ~ "4_5",
+             (CN_H1 >= 4.5 & CN_H1 <= 5.5 & CN_H2 >= 4.5 & CN_H2 <= 5.5) ~ "5_5",
+           ))
+
+#second, reconcile inversion status and duplication status (use matrix developed at the last lab meeting)
+HGDP_final_cnv <- HGDP_final_cnv %>%
+  mutate(complex_genotype =
+           case_when(
+             (genotype == "H1H1" & sector == "2_2") ~ "H1/H1",
+             (genotype == "H1H2" & sector == "2_2") ~ "H1/H2",
+             (genotype == "H2H2" & sector == "2_2") ~ "H2/H2",
+             
+             (genotype == "H1H1" & sector == "3_3") ~ "H1/H1D",
+             (genotype == "H1H1" & sector == "4_4") ~ "H1D/H1D", #note this could also be H1/H1DD 
+             (genotype == "H1H1" & sector == "5_5") ~ "H1D/H1DD", #note this could also be H1/H1DDD
+             
+             (genotype == "H1H2" & sector == "2_3") ~ "H1/H2D",
+             (genotype == "H1H2" & sector == "3_3") ~ "H1D/H2",
+             (genotype == "H1H2" & sector == "3_4") ~ "H1D/H2D",
+             (genotype == "H1H2" & sector == "4_4") ~ "H1DD/H2",
+             (genotype == "H1H2" & sector == "4_5") ~ "H1DD/H2D",
+             (genotype == "H1H2" & sector == "5_3") ~ "H1DDD/H2",
+             
+             (genotype == "H2H2" & sector == "2_3") ~ "H2/H2D",
+             (genotype == "H2H2" & sector == "2_4") ~ "H2D/H2D"
+           ))
+
+HGDP_final_cnv <- HGDP_final_cnv[, c("sample", "genotype", "sector", "complex_genotype", "sex", "pop", "superpop", "chromosome", "normalizing_factor", "window_start", "window_end", "read_depth")]
+
+copy_number_sp <- ggplot(averages_H1_H2, aes(x = CN_H1, y = CN_H2)) + 
+  geom_point() 
+  #geom_point(data = subset(averages_H1_H2, sample %in% na_rows_SGDP$sample), aes(CN_H1, CN_H2, color = "pink"))
+  #geom_text(data = subset(combined_summary_table[is.na(combined_summary_table$complex_genotype),]))
+copy_number_sp 
+```
+
+```{r plotting CNV in the HGDP dataser as copy number over the genomic region}
+ggplot(
+  HGDP_final_cnv %>% filter(window_start >= 46000000 & window_start <= 46310000) ,
+  aes(x = window_start, y = read_depth)) +
+  geom_point(aes(color = complex_genotype), size = 0.25) +
+  geom_line(aes(group = sample, color = complex_genotype))+
+  facet_grid(complex_genotype ~.)
+```
+
+```{r summary statistics on the HGDP dataset}
+HGDP_summary_table <- distinct(HGDP_final_cnv, pick(c("sample", "genotype", "complex_genotype", "pop", "superpop")))
+
+#some things of note: 
+# 1KG has a total of 2388 individuals 
+# 26 individuals do not have a complex genotype. This could either be due to mismatch (?) or read depth issues (i.e. read depth was outputted as 0)
+#TODO INVESTIGATE THIS FURTHER
+HGDP_summary_table %>%
+  count(complex_genotype)
+
+# adding in the different haplotypes (hap1 and hap2) - this will help with the world map
+HGDP_summary_table <- HGDP_summary_table %>%
+  mutate(hap1 = 
+           case_when(
+             (complex_genotype == "H1/H1") ~ "H1",
+             (complex_genotype == "H1/H1D") ~ "H1",
+             (complex_genotype == "H1/H2") ~ "H1",
+             (complex_genotype == "H1/H2D") ~ "H1",
+             (complex_genotype == "H1D/H1D") ~ "H1D",
+             (complex_genotype == "H1D/H1DD") ~ "H1D",
+             (complex_genotype == "H1D/H2") ~ "H1D",
+             (complex_genotype == "H1D/H2D") ~ "H1D",
+             (complex_genotype == "H1DD/H2D") ~ "H1DD",
+             (complex_genotype == "H2/H2") ~ "H2",
+             (complex_genotype == "H2/H2D") ~ "H2",
+             (complex_genotype == "H2D/H2D") ~ "H2D"
+           ))
+
+HGDP_summary_table <- HGDP_summary_table %>%
+  mutate(hap2 = 
+           case_when(
+             (complex_genotype == "H1/H1") ~ "H1",
+             (complex_genotype == "H1/H1D") ~ "H1D",
+             (complex_genotype == "H1/H2") ~ "H2",
+             (complex_genotype == "H1/H2D") ~ "H2D",
+             (complex_genotype == "H1D/H1D") ~ "H1D",
+             (complex_genotype == "H1D/H1DD") ~ "H1DD",
+             (complex_genotype == "H1D/H2") ~ "H2",
+             (complex_genotype == "H1D/H2D") ~ "H2D",
+             (complex_genotype == "H1DD/H2D") ~ "H2D",
+             (complex_genotype == "H2/H2") ~ "H2",
+             (complex_genotype == "H2/H2D") ~ "H2D",
+             (complex_genotype == "H2D/H2D") ~ "H2D"
+           ))
+
+HGDP_summary_table <- HGDP_summary_table[, c("sample", "genotype", "complex_genotype", "hap1", "hap2", "pop", "superpop")]
+
+```
+
+```{r data merging and data cleanup: CAAPA2}
+CAAPA_readdepth <- read.delim("~/Downloads/CAAPA2_readdepth_NEW_CLEAN (4).txt")
+CAAPA_readdepth[c('sample', 'chrom')] <- str_split_fixed(CAAPA_readdepth$sample, '_', 2)
+#CAAPA_readdepth <- read.delim("~/Documents/notebooks/cnv-plots/CAAPA2_readdepth_NEW_CLEAN.txt")
+CAAPA2_samples_metadata <- read.delim("~/Documents/datasets/metadata/CAAPA2_samples_metadata.txt")
+#CAAPA2_samples_genotype <- read.csv("~/Downloads/CAAPA2_genotypes.csv")
+CAAPA2_samples_genotype <- new_genotypeSNPSCAAPA #taken from SNPRelate_CAAPA.Rmd
+
+
+H1_start_pos = 46095000
+H1_end_pos = 46123000
+H2_start_pos = 46143000
+H2_end_pos = 46238000
+
+
+average_H1 <- CAAPA_readdepth %>% 
+  filter(window_start >= H1_start_pos & window_start <= H1_end_pos) %>%
+  group_by(sample) %>%
+  summarize(CN_H1 = mean(read_depth))
+
+average_H2 <- CAAPA_readdepth %>% 
+  filter(window_start >= H2_start_pos & window_start <= H2_end_pos) %>%
+  group_by(sample) %>%
+  summarize(CN_H2 = mean(read_depth))
+
+averages_H1_H2 <- average_H1 %>% left_join(average_H2) %>% 
+  filter(CN_H1 < 10) %>% filter(CN_H2 <10) %>% filter(CN_H1 >-1) %>% filter(CN_H2 >1)
+
+averages_H1_H2 <- averages_H1_H2 %>%
+  dplyr::mutate(sector = 
+           dplyr::case_when(
+             (CN_H1 >= 1.5 & CN_H1 <= 2.5 & CN_H2 >= 1.5 & CN_H2 <= 2.5) ~ "2_2",
+             (CN_H1 >= 1.5 & CN_H1 <= 2.5 & CN_H2 >= 2.5 & CN_H2 <= 3.5) ~ "2_3",
+             (CN_H1 >= 1.5 & CN_H1 <= 2.5 & CN_H2 >= 3.5 & CN_H2 <= 4.5) ~ "2_4",
+             (CN_H1 >= 2.5 & CN_H1 <= 3.5 & CN_H2 >= 2.5 & CN_H2 <= 3.5) ~ "3_3",
+             (CN_H1 >= 2.5 & CN_H1 <= 3.5 & CN_H2 >= 3.5 & CN_H2 <= 4.5) ~ "3_4",
+             (CN_H1 >= 3.5 & CN_H1 <= 4.5 & CN_H2 >= 3.5 & CN_H2 <= 4.5) ~ "4_4",
+             (CN_H1 >= 3.5 & CN_H1 <= 4.5 & CN_H2 >= 4.5 & CN_H2 <= 5.5) ~ "4_5",
+             (CN_H1 >= 4.5 & CN_H1 <= 5.5 & CN_H2 >= 4.5 & CN_H2 <= 5.5) ~ "5_5",
+           ))
+
+copy_number_sp <- ggplot(averages_H1_H2, aes(x = CN_H1, y = CN_H2)) + geom_point()
+copy_number_sp #clusters pretty well!
+
+CAAPA2_data <- merge(CAAPA_readdepth, CAAPA2_samples_metadata, by.x = "sample", by.y = "Sequence_ID")
+CAAPA2_data <- merge(CAAPA2_data, averages_H1_H2, by = "sample")
+
+CAAPA2_data_SUMMARY <- merge(averages_H1_H2, CAAPA2_samples_metadata, by.x = "sample", by.y = "Sequence_ID")
+
+CAAPA2_data_SUMMARY_GENO <- merge(CAAPA2_data_SUMMARY, CAAPA2_samples_genotype, by = "sample")
+
+#second, reconcile inversion status and duplication status (use matrix developed at the last lab meeting)
+CAAPA2_data_SUMMARY_GENO <- CAAPA2_data_SUMMARY_GENO %>%
+  mutate(complex_genotype =
+           case_when(
+             (genotype == "H1H1" & sector == "2_2") ~ "H1/H1",
+             (genotype == "H1H2" & sector == "2_2") ~ "H1/H2",
+             (genotype == "H2H2" & sector == "2_2") ~ "H2/H2",
+             
+             (genotype == "H1H1" & sector == "3_3") ~ "H1/H1D",
+             (genotype == "H1H1" & sector == "4_4") ~ "H1D/H1D", #note this could also be H1/H1DD 
+             (genotype == "H1H1" & sector == "5_5") ~ "H1D/H1DD", #note this could also be H1/H1DDD
+             
+             (genotype == "H1H2" & sector == "2_3") ~ "H1/H2D",
+             (genotype == "H1H2" & sector == "3_3") ~ "H1D/H2",
+             (genotype == "H1H2" & sector == "3_4") ~ "H1D/H2D",
+             (genotype == "H1H2" & sector == "4_4") ~ "H1DD/H2",
+             (genotype == "H1H2" & sector == "4_5") ~ "H1DD/H2D",
+             (genotype == "H1H2" & sector == "5_3") ~ "H1DDD/H2",
+             
+             (genotype == "H2H2" & sector == "2_3") ~ "H2/H2D",
+             (genotype == "H2H2" & sector == "2_4") ~ "H2D/H2D"
+           ))
+
+CAAPA2_data_SUMMARY_GENO_haps <- CAAPA2_data_SUMMARY_GENO %>%
+    mutate(
+    hap1 = ifelse(complex_genotype == "H1/H1", "H1", 
+                    ifelse(complex_genotype == "H1/H2", "H1",
+                    ifelse(complex_genotype == "H1/H2D", "H1",
+                    ifelse(complex_genotype == "H1/H1D", "H1",
+                    ifelse(complex_genotype == "H2/H2", "H2", NA))))),
+    hap2 = ifelse(complex_genotype == "H1/H1", "H1", 
+                    ifelse(complex_genotype == "H1/H2", "H2",
+                    ifelse(complex_genotype == "H1/H2D", "H2D",
+                    ifelse(complex_genotype == "H1/H1D", "H1D",
+                    ifelse(complex_genotype == "H2/H2", "H2", NA)))))
+  )
+
+CAAPA2_data_SUMMARY_GENO_haps_FINAL <- CAAPA2_data_SUMMARY_GENO_haps %>% filter(!(is.na(complex_genotype) & is.na(complex_genotype))) 
+
+# Pivot the haplotype columns into long format
+CAAPA2_data_SUMMARY_GENO_haps_FINAL_long <- CAAPA2_data_SUMMARY_GENO_haps_FINAL %>%
+  pivot_longer(cols = c(hap1, hap2), names_to = "hap_type", values_to = "haplotype")
+
+# Step 1: Aggregate the counts for each population and haplotype
+CAAPA2_data_SUMMARY_GENO_haps_FINAL_aggregated <- CAAPA2_data_SUMMARY_GENO_haps_FINAL_long %>%
+  group_by(Population, haplotype) %>%
+  summarise(total_count = n(), .groups = 'drop')  # Use n() to count rows
+
+# Step 2: Pivot to wide format (one row per population)
+CAAPA2_data_SUMMARY_GENO_haps_FINAL_wide <- CAAPA2_data_SUMMARY_GENO_haps_FINAL_aggregated %>%
+  pivot_wider(
+    names_from = haplotype,
+    values_from = total_count,
+    values_fill = list(total_count = 0)
+  )
+
+# Step 3: Calculate total counts for each population
+total_counts_CAAPA2 <- CAAPA2_data_SUMMARY_GENO_haps_FINAL_long %>%
+  group_by(Population) %>%
+  summarise(total = n(), .groups = 'drop')
+
+# Step 4: Merge with total counts and calculate proportions
+CAAPA2_data_SUMMARY_GENO_haps_FINAL_wide <- 
+  merge(CAAPA2_data_SUMMARY_GENO_haps_FINAL_wide, total_counts_CAAPA2, by = "Population") %>%
+  #%>%
+  #left_join(total_counts_CAAPA2, by = "Population") %>%
+  mutate(
+    H1 = ifelse(total > 0, H1 / total, 0),
+    H1D = ifelse(total > 0, H1D / total, 0),
+    H2 = ifelse(total > 0, H2 / total, 0),
+    H2D = ifelse(total > 0, H2D / total, 0)
+  ) %>%
+  dplyr::select(Population, total, H1, H1D, H2, H2D) %>%
+  mutate(N = total/2) %>%
+  dplyr::select(Population, N, H1, H1D, H2, H2D)
+
+#final step is to merge the HGDP_final_cnv with the columns in averages_H1_H2
+#HGDP_final_cnv <- HGDP_final_cnv %>% left_join(averages_H1_H2)
+
+color_palette <- pnw_palette("Bay", length(unique(CAAPA2_data$Population)), type = "continuous")
+
+ggplot(
+  CAAPA2_data %>%
+    filter(window_start >= 46000000 & window_start <= 46310000) %>%
+    filter(read_depth > -1 & read_depth < 10),
+  aes(x = window_start, y = read_depth)
+) +
+  geom_point(aes(color = Population), size = 0.25) +
+  geom_line(aes(group = sample, color = Population)) +
+  scale_color_manual(values = color_palette) +
+  facet_grid(Population ~ .) +
+  theme(strip.text = element_blank())
+
+ggplotly(ggplot(
+  CAAPA2_data %>%
+    filter(window_start >= 46000000 & window_start <= 46310000) %>%
+    filter(read_depth > -1 & read_depth < 10),
+  aes(x = window_start, y = read_depth)
+) +
+  geom_point(aes(color = Population), size = 0.25) +
+  geom_line(aes(group = sample, color = Population)) +
+  scale_color_manual(values = color_palette) +
+  facet_grid(Population ~ .) +
+  theme(strip.text = element_blank()))
+
+# ggggg <- ggplot(
+#   CAAPA2_data %>%
+#     filter(window_start >= 46000000 & window_start <= 46400000) %>%
+#     filter(read_depth > -1 & read_depth < 10),
+#   aes(x = window_start, y = read_depth)
+# ) +
+#   geom_point(aes(color = Population), size = 0.25) +
+#   geom_line(aes(group = sample, color = Population)) +
+#   scale_color_manual(values = color_palette) +
+#   geom_segment(
+#     aes(
+#       x = start,
+#       xend = end,
+#       y = -1.275,    # Position for segments below the lowest y-value in read_depth
+#       yend = -1.275
+#     ),
+#     data = genes %>% filter(xpos == 2) %>% filter(start >= 46000000 & end <= 46400000), # Use the genes dataset
+#     size = 0.5,
+#     arrow = arrow(length = unit(0.01, "cm"), type = "closed"),
+#     linejoin = "mitre",
+#     lineend = "butt",
+#     inherit.aes = FALSE                # Prevent inheriting aes mappings from ggplot
+#   ) +
+#   facet_grid(Population ~ .) +
+#   theme_minimal() +
+#   theme(
+#     strip.text = element_blank(),    # Remove facet labels if needed
+#     axis.line.x = element_line(),   # Ensure x-axis line is visible
+#     axis.ticks.x = element_line(),  # Ensure x-axis ticks are visible
+#     axis.text.x = element_text(angle = 0, hjust = 1) # Optional: tilt x-axis labels
+#   ) +
+#   labs(x = "genomic position (hg38)", y = "read_depth")
+
+```
+
+```{r data merging and data cleanup: SGDP}
+SGDP_readdepth <- read.delim("~/Documents/datasets/genotype_CNV/SGDP_readdepth_NEW_CLEAN.txt")
+
+SGDP_metadata <- read.table("~/Documents/notebooks/cnv-plots/all_metadata.txt", quote="\"", comment.char="", header = TRUE)
+#SGDP_metadata_2 <- metadata_part_2
+
+SGDP_metadata_UPDATED <- SGDP_metadata %>%
+  filter(dataset == "SGDP") 
+  #%>%
+  #select(sample, population, region, genotype)
+
+SGDP_metadata_UPDATED <- SGDP_metadata_UPDATED %>%
+  rename(
+    pop = population,
+    superpop = region
+  )
+
+SGDP_cnv <- SGDP_readdepth %>%
+  left_join(SGDP_metadata_UPDATED)
+  #left_join(SGDP_metadata_2, by = c('sample' = 'sample_id'))
+
+#adding the "sex" column as NA... I know it's there in the SGDP dataset, but somehow we've missed out on it. And it doesn't seem that important..... famous last words....
+SGDP_cnv["sex"] <- NA
+
+SGDP_final_cnv <- SGDP_cnv[, c("sample", "genotype", "sex", "pop", "superpop", "chromosome", "normalizing_factor", "window_start", "window_end", "read_depth")]
+```
+
+```{r determining the average CNV over the H1 and H2 blocks: SGDP}
+#overall block in hg38: [46000000,46310000]
+#H1 block: [46095000,46123000]
+#H2 block: [46143000,46238000]
+
+H1_start_pos = 46095000
+H1_end_pos = 46123000
+H2_start_pos = 46143000
+H2_end_pos = 46238000
+
+
+average_H1 <- SGDP_final_cnv %>% 
+  filter(window_start >= H1_start_pos & window_start <= H1_end_pos) %>%
+  group_by(sample) %>%
+  summarize(CN_H1 = mean(read_depth))
+
+average_H2 <- SGDP_final_cnv %>% 
+  filter(window_start >= H2_start_pos & window_start <= H2_end_pos) %>%
+  group_by(sample) %>%
+  summarize(CN_H2 = mean(read_depth))
+
+#for some reason LP6005441-DNA_B06 has an insane CNV (>30....)
+averages_H1_H2 <- average_H1 %>% left_join(average_H2) 
+
+#%>% filter(sample != "LP6005441-DNA_B06") %>% filter(sample != "LP6005441-DNA_E05") %>% filter(sample != "LP6005441-DNA_A06") %>% filter(sample != "LP6005441-DNA_E05")
+
+#averages_H1_H2 <- average_H1 %>% left_join(average_H2) %>% filter(sample != c("LP6005441-DNA_B06","LP6005441-DNA_E05", "LP6005441-DNA_A06", "LP6005441-DNA_E05"))
+
+
+copy_number_sp <- ggplot(averages_H1_H2, aes(x = CN_H1, y = CN_H2)) + 
+  geom_point() 
+  #geom_point(data = subset(averages_H1_H2, sample %in% na_rows_SGDP$sample), aes(CN_H1, CN_H2, color = "pink"))
+  #geom_text(data = subset(combined_summary_table[is.na(combined_summary_table$complex_genotype),]))
+copy_number_sp 
+
+#final step is to merge the SGDP_final_cnv with the columns in averages_H1_H2
+SGDP_final_cnv <- SGDP_final_cnv %>% left_join(averages_H1_H2)
+```
+
+```{r assigning a SPECIFIC/COMPLEX genotype to each individual: SGDP}
+#first, assign sectors. Possible naming conventions are where it's clustered? Sector 2_2, Sector 2_3, Sector 2_4 etc
+#the margins should probably be +/- 0.5
+
+SGDP_final_cnv <- SGDP_final_cnv %>%
+  mutate(sector = 
+           case_when(
+             (CN_H1 >= 1.75 & CN_H1 <= 2.5 & CN_H2 >= 1.75 & CN_H2 <= 2.5) ~ "2_2",
+             (CN_H1 >= 1.75 & CN_H1 <= 2.5 & CN_H2 >= 2.5 & CN_H2 <= 3.5) ~ "2_3",
+             (CN_H1 >= 1.75 & CN_H1 <= 2.5 & CN_H2 >= 3.5 & CN_H2 <= 4.5) ~ "2_4",
+             (CN_H1 >= 2.5 & CN_H1 <= 3.5 & CN_H2 >= 2.5 & CN_H2 <= 3.5) ~ "3_3",
+             (CN_H1 >= 2.5 & CN_H1 <= 3.5 & CN_H2 >= 3.5 & CN_H2 <= 4.5) ~ "3_4",
+             (CN_H1 >= 3.5 & CN_H1 <= 4.5 & CN_H2 >= 3.5 & CN_H2 <= 4.5) ~ "4_4",
+             (CN_H1 >= 3.5 & CN_H1 <= 4.5 & CN_H2 >= 4.5 & CN_H2 <= 5.5) ~ "4_5",
+             (CN_H1 >= 4.5 & CN_H1 <= 5.5 & CN_H2 >= 4.5 & CN_H2 <= 5.5) ~ "5_5",
+           ))
+
+#second, reconcile inversion status and duplication status (use matrix developed at the last lab meeting)
+SGDP_final_cnv <- SGDP_final_cnv %>%
+  mutate(complex_genotype =
+           case_when(
+             (genotype == "H1H1" & sector == "2_2") ~ "H1/H1",
+             (genotype == "H1H2" & sector == "2_2") ~ "H1/H2",
+             (genotype == "H2H2" & sector == "2_2") ~ "H2/H2",
+             
+             (genotype == "H1H1" & sector == "3_3") ~ "H1/H1D",
+             (genotype == "H1H1" & sector == "4_4") ~ "H1D/H1D", #note this could also be H1/H1DD 
+             (genotype == "H1H1" & sector == "5_5") ~ "H1D/H1DD", #note this could also be H1/H1DDD
+             
+             (genotype == "H1H2" & sector == "2_3") ~ "H1/H2D",
+             (genotype == "H1H2" & sector == "3_3") ~ "H1D/H2",
+             (genotype == "H1H2" & sector == "3_4") ~ "H1D/H2D",
+             (genotype == "H1H2" & sector == "4_4") ~ "H1DD/H2",
+             (genotype == "H1H2" & sector == "4_5") ~ "H1DD/H2D",
+             (genotype == "H1H2" & sector == "5_3") ~ "H1DDD/H2",
+             (genotype == "H2H2" & sector == "2_3") ~ "H2/H2D",
+             (genotype == "H2H2" & sector == "2_4") ~ "H2D/H2D"
+           ))
+
+SGDP_final_cnv <- SGDP_final_cnv[, c("sample", "genotype", "sector", "complex_genotype", "sex", "pop", "superpop", "chromosome", "normalizing_factor", "window_start", "window_end", "read_depth")]
+```
+
+```{r plotting CNV in the SGDP dataset as copy number over the genomic region}
+ggplot(
+  SGDP_final_cnv %>% filter(window_start >= 46000000 & window_start <= 46310000) %>% filter(!is.na(read_depth)) %>% filter(!is.na(complex_genotype)),
+  aes(x = window_start, y = read_depth)) +
+  geom_point(aes(color = complex_genotype), size = 0.25) +
+  geom_line(aes(group = sample, color = complex_genotype))+
+  facet_grid(complex_genotype ~.)
+```
+
+```{r}
+SGDP_temp_df <- left_join(averages_H1_H2, SGDP_summary_table)
+
+copy_number_sp <- ggplot(SGDP_temp_df, aes(x = CN_H1, y = CN_H2, color = complex_genotype)) + 
+  geom_point() +
+  facet_wrap(vars(complex_genotype))
+
+copy_number_sp
+```
+
+```{r summary statistics on the SGDP dataset}
+SGDP_summary_table <- distinct(SGDP_final_cnv, pick(c("sample", "genotype", "complex_genotype", "pop", "superpop")))
+
+#some things of note:
+#TODO FILL THIS IN
+SGDP_summary_table %>%
+  count(complex_genotype)
+
+# adding in the different haplotypes (hap1 and hap2) - this will help with the world map
+SGDP_summary_table <- SGDP_summary_table %>%
+  mutate(hap1 = 
+           case_when(
+             (complex_genotype == "H1/H1") ~ "H1",
+             (complex_genotype == "H1/H1D") ~ "H1",
+             (complex_genotype == "H1/H2") ~ "H1",
+             (complex_genotype == "H1/H2D") ~ "H1",
+             (complex_genotype == "H1D/H1D") ~ "H1D",
+             (complex_genotype == "H1D/H1DD") ~ "H1D",
+             (complex_genotype == "H1D/H2") ~ "H1D",
+             (complex_genotype == "H1D/H2D") ~ "H1D",
+             (complex_genotype == "H1DD/H2D") ~ "H1DD",
+             (complex_genotype == "H2/H2") ~ "H2",
+             (complex_genotype == "H2/H2D") ~ "H2",
+             (complex_genotype == "H2D/H2D") ~ "H2D"
+           ))
+
+SGDP_summary_table <- SGDP_summary_table %>%
+  mutate(hap2 = 
+           case_when(
+             (complex_genotype == "H1/H1") ~ "H1",
+             (complex_genotype == "H1/H1D") ~ "H1D",
+             (complex_genotype == "H1/H2") ~ "H2",
+             (complex_genotype == "H1/H2D") ~ "H2D",
+             (complex_genotype == "H1D/H1D") ~ "H1D",
+             (complex_genotype == "H1D/H1DD") ~ "H1DD",
+             (complex_genotype == "H1D/H2") ~ "H2",
+             (complex_genotype == "H1D/H2D") ~ "H2D",
+             (complex_genotype == "H1DD/H2D") ~ "H2D",
+             (complex_genotype == "H2/H2") ~ "H2",
+             (complex_genotype == "H2/H2D") ~ "H2D",
+             (complex_genotype == "H2D/H2D") ~ "H2D"
+           ))
+
+SGDP_summary_table <- SGDP_summary_table[, c("sample", "genotype", "complex_genotype", "hap1", "hap2", "pop", "superpop")]
+```
+
+```{r making a mega dataframe - SGDP, HGDP, and 1KG}
+kg_final_cnv["dataset"] <- "1KG"
+
+HGDP_final_cnv["dataset"] <- "HGDP"
+
+SGDP_final_cnv["dataset"] <- "SGDP"
+
+combined_final_cnv <- rbind(kg_final_cnv, HGDP_final_cnv)
+combined_final_cnv <- rbind(combined_final_cnv, SGDP_final_cnv)
+  
+#misc cleanup - reordering the columns
+combined_final_cnv <- combined_final_cnv[, c("sample", "dataset", "genotype", "sector", "complex_genotype", "sex", "pop", "superpop", "chromosome", "normalizing_factor", "window_start", "window_end", "read_depth")]
+```
+
+```{r determining the average CNV over the H1 and H2 blocks: mega dataframe}
+#overall block in hg38: [46000000,46310000]
+#H1 block: [46095000,46123000]
+#H2 block: [46143000,46238000]
+
+H1_start_pos = 46095000
+H1_end_pos = 46123000
+H2_start_pos = 46143000
+H2_end_pos = 46238000
+
+average_H1 <- combined_final_cnv %>% 
+  filter(window_start >= H1_start_pos & window_start <= H1_end_pos) %>%
+  group_by(sample) %>%
+  summarize(CN_H1 = mean(read_depth))
+
+average_H2 <- combined_final_cnv %>% 
+  filter(window_start >= H2_start_pos & window_start <= H2_end_pos) %>%
+  group_by(sample) %>%
+  summarize(CN_H2 = mean(read_depth))
+
+averages_H1_H2 <- average_H1 %>% left_join(average_H2)
+averages_H1_H2_metadata <- merge(averages_H1_H2, combined_summary_table, by = "sample") %>%
+  mutate(superpop = replace(superpop, superpop == "Central South Asia (HGDP)", "CSA")) %>%
+  mutate(superpop = replace(superpop, superpop == "Africa (HGDP)", "AFR")) %>%
+  mutate(superpop = replace(superpop, superpop == "America (HGDP)", "AMR")) %>%
+  mutate(superpop = replace(superpop, superpop == "Oceania (SGDP),Oceania (HGDP)", "OCN")) %>%
+  mutate(superpop = replace(superpop, superpop == "Europe (HGDP)", "EUR")) %>%
+  mutate(superpop = replace(superpop, superpop == "East Asia (HGDP)", "EAS")) %>%
+  mutate(superpop = replace(superpop, superpop == "Oceania (HGDP)", "OCN")) %>%
+  mutate(superpop = replace(superpop, superpop == "Middle East (HGDP)", "SAS")) %>%
+  mutate(superpop = replace(superpop, superpop == "EUR,AFR", "EUR")) 
+
+copy_number_sp <- ggplot(averages_H1_H2_metadata, aes(x = CN_H1, y = CN_H2, color = dataset)) + 
+  scale_color_manual(values = bay_pal[c(1,4,5,7)]) +
+  xlab("number of copies of H1") +
+  ylab("number of copies of H2") +
+  theme_bw() +
+  geom_point() +
+  facet_wrap(superpop~.)
+
+copy_number_sp
+
+pdf("~/Documents/figures/cnv-plots/individual_CN_scatter_DATASET_2.pdf", width = 8, height = 5)
+copy_number_sp 
+
+
+copy_number_sp <- ggplot(averages_H1_H2_metadata, aes(x = CN_H1, y = CN_H2, color = superpop)) + 
+  scale_color_manual(values = bay_pal[c(1,2,3,4,5,6,7,8)]) +
+  xlab("number of copies of H1") +
+  ylab("number of copies of H2") +
+  theme_bw() +
+  geom_point() +
+  facet_wrap(superpop~.)
+
+pdf("~/Documents/figures/cnv-plots/individual_CN_scatter_SUPERPOP.pdf", width = 8, height = 5)
+copy_number_sp
+
+bay_pal <- pnw_palette("Bay", 14, type = "continuous")
+copy_number_sp <- ggplot(averages_H1_H2_metadata, aes(x = CN_H1, y = CN_H2, color = complex_genotype)) + 
+  scale_color_manual(values = bay_pal[c(1,2,3,4,5,6,7,8,9,10,11,12,13)]) +
+  xlab("number of copies of H1") +
+  ylab("number of copies of H2") +
+  theme_bw() +
+  geom_point(aes(alpha = 0.25))
+  #facet_wrap(complex_genotype~.)
+
+pdf("~/Documents/figures/cnv-plots/individual_CN_scatter_COMPLEX-GENO_combined.pdf", width = 8, height = 5)
+copy_number_sp
+
+#final step is to merge the combined_final_cnv with the columns in averages_H1_H2
+combined_final_cnv <- combined_final_cnv %>% left_join(averages_H1_H2)
+```
+
+```{r plotting CNV in ALL datasets as copy number over the genomic region - GENERATING A PDF PLOT HERE!!!}
+
+bay_pal = pnw_palette("Bay", 13, type = "continuous")
+
+filtered_df <-combined_final_cnv %>% 
+    drop_na() %>% 
+    filter(window_start >= 46000000 & window_start <= 46310000) 
+
+# Convert complex_genotype to a factor
+filtered_df$complex_genotype <- factor(filtered_df$complex_genotype)
+
+# Create the plot
+cnv_1kg_hgdp_sgdp <- ggplot(data = filtered_df) +
+  geom_point(aes(x = window_start, y = read_depth, color = complex_genotype), size = 0.25) +
+  geom_line(aes(x = window_start, y = read_depth, group = sample, color = complex_genotype)) +
+  scale_color_manual(values = bay_pal[c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)]) +
+  theme_bw() +
+  geom_rect(aes(xmin = 46095000, xmax = 46123000, ymin = -0.1, ymax = 0.1 )) + #labelling the H1 block with a rectangle
+  annotate('text', x = (46095000 + 46123000)/2, y = -0.2, label = "a", size = 1.5) + #labelling the H1 block with a label for the midpoint of the KANSL block
+  geom_rect(aes(xmin = 46143000, xmax = 46238000, ymin = -0.1, ymax = 0.1 )) + #labelling the H2 block with a rectangle
+  annotate('text', x = (46143000 + 46238000)/2, y = -0.2, label = "B", size = 1.5) + #labelling the H2 block with a label for the midpoint of the KANSL block
+  facet_wrap(~ complex_genotype, scales = "free", ncol = 1) + # facet by complex_genotype
+  theme(legend.position = "none") 
+
+#pdf(file = "~/Documents/figures/cnv-plots/average_read_depth_ALL.pdf", width = 8.5, height = 11)
+#cnv_1kg_hgdp_sgdp
+
+#fn_out = paste("~/Documents/figures/cnv-plots/average_read_depth_ALL.pdf")
+#pdf(fn_out, width=8.5, height=11)
+#print(cnv_1kg_hgdp_sgdp)
+#dev.off()
+
+#ggsave("~/Documents/figures/cnv-plots/average_read_depth_ALL.pdf", plot = cnv_1kg_hgdp_sgdp, width = 11, height = 8.5)
+
+library(ggplot2)
+library(dplyr)
+
+# Create multi-page PDF
+pdf("~/Documents/figures/cnv-plots/average_read_depth_ALL.pdf", width = 11, height = 8.5, onefile = TRUE)
+
+for (geno in levels(filtered_df$complex_genotype)) {
+  
+  # Subset for this genotype
+  df_subset <- filtered_df %>% filter(complex_genotype == geno)
+  
+  # Create plot
+  p <- ggplot(data = df_subset) +
+    geom_point(aes(x = window_start, y = read_depth, color = complex_genotype), size = 0.25) +
+    geom_line(aes(x = window_start, y = read_depth, group = sample, color = complex_genotype)) +
+    scale_color_manual(values = bay_pal) +
+    theme_bw() +
+    geom_rect(aes(xmin = 46095000, xmax = 46123000, ymin = -0.1, ymax = 0.1), inherit.aes = FALSE) +
+    annotate('text', x = (46095000 + 46123000) / 2, y = -0.2, label = "a", size = 1.5) +
+    geom_rect(aes(xmin = 46143000, xmax = 46238000, ymin = -0.1, ymax = 0.1), inherit.aes = FALSE) +
+    annotate('text', x = (46143000 + 46238000) / 2, y = -0.2, label = "B", size = 1.5) +
+    theme(legend.position = "none",
+          plot.margin = margin(50, 50, 50, 50)) +  # padding to help center visually
+    labs(title = geno) +
+    coord_cartesian(expand = TRUE)  # helps keep space around plot
+  
+  # Print plot to the PDF (new page for each)
+  print(p)
+}
+
+dev.off()
+
+```
+
+```{r summary statistics on the mega dataframe}
+combined_summary_table <- distinct(combined_final_cnv, pick(c("sample","dataset", "genotype", "complex_genotype", "pop", "superpop")))
+
+#some things of note:
+#TODO FILL THIS IN
+combined_summary_table %>%
+  count(complex_genotype)
+
+# adding in the different haplotypes (hap1 and hap2) - this will help with the world map
+combined_summary_table <- combined_summary_table %>%
+  mutate(hap1 = 
+           case_when(
+             (complex_genotype == "H1/H1") ~ "H1",
+             (complex_genotype == "H1/H1D") ~ "H1",
+             (complex_genotype == "H1/H2") ~ "H1",
+             (complex_genotype == "H1/H2D") ~ "H1",
+             (complex_genotype == "H1D/H1D") ~ "H1D",
+             (complex_genotype == "H1D/H1DD") ~ "H1D",
+             (complex_genotype == "H1D/H2") ~ "H1D",
+             (complex_genotype == "H1D/H2D") ~ "H1D",
+             (complex_genotype == "H1DD/H2D") ~ "H1DD",
+             (complex_genotype == "H2/H2") ~ "H2",
+             (complex_genotype == "H2/H2D") ~ "H2",
+             (complex_genotype == "H2D/H2D") ~ "H2D"
+           ))
+
+combined_summary_table <- combined_summary_table %>%
+  mutate(hap2 = 
+           case_when(
+             (complex_genotype == "H1/H1") ~ "H1",
+             (complex_genotype == "H1/H1D") ~ "H1D",
+             (complex_genotype == "H1/H2") ~ "H2",
+             (complex_genotype == "H1/H2D") ~ "H2D",
+             (complex_genotype == "H1D/H1D") ~ "H1D",
+             (complex_genotype == "H1D/H1DD") ~ "H1DD",
+             (complex_genotype == "H1D/H2") ~ "H2",
+             (complex_genotype == "H1D/H2D") ~ "H2D",
+             (complex_genotype == "H1DD/H2D") ~ "H2D",
+             (complex_genotype == "H2/H2") ~ "H2",
+             (complex_genotype == "H2/H2D") ~ "H2D",
+             (complex_genotype == "H2D/H2D") ~ "H2D"
+           ))
+
+combined_summary_table <- combined_summary_table[, c("sample", "dataset", "genotype", "complex_genotype", "hap1", "hap2", "pop", "superpop")]
+write.table(combined_summary_table, "~/Documents/datasets/hgdp_sgdp_1kg_summary_NEW_NEW.txt", row.names=FALSE, sep = "\t")
+```
+
+```{r average copy number in the KANSL1 region (histograms) - GENERATING A PDF PLOT HERE!!!}
+pal = pnw_palette("Bay", 12, type = "continuous")
+
+#KANSL1 genome region: chr17:46,029,916-46,223,676
+#don't use this.... it gives weird half numbers.....
+
+# KANSL1_start_pos <- 46095000
+# KANSL1_end_pos <- 46123000
+# 
+# avg_KANSL_read_depth <- combined_final_cnv %>% 
+#   filter(window_start >= KANSL1_start_pos & window_start <= KANSL1_end_pos) %>%
+#   group_by(sample) %>%
+#   summarize(avg_KANSL_read_depth = mean(read_depth))
+
+#make sure that averages_H1_H1 reflects the "mega" dataset...
+averages_H1_H2 <- averages_H1_H2 %>% 
+  left_join(combined_summary_table) 
+
+averages_H1_H2 <- averages_H1_H2 %>%
+  mutate(superpop = replace(superpop, superpop == "Central South Asia (HGDP)", "CSA")) %>%
+  mutate(superpop = replace(superpop, superpop == "Africa (HGDP)", "AFR")) %>%
+  mutate(superpop = replace(superpop, superpop == "America (HGDP)", "AMR")) %>%
+  mutate(superpop = replace(superpop, superpop == "Oceania (SGDP),Oceania (HGDP)", "OCN")) %>%
+  mutate(superpop = replace(superpop, superpop == "Europe (HGDP)", "EUR")) %>%
+  mutate(superpop = replace(superpop, superpop == "East Asia (HGDP)", "EAS")) %>%
+  mutate(superpop = replace(superpop, superpop == "Oceania (HGDP)", "OCN")) %>%
+  mutate(superpop = replace(superpop, superpop == "Middle East (HGDP)", "SAS")) %>%
+  mutate(superpop = replace(superpop, superpop == "EUR,AFR", "EUR"))
+
+averages_H1_H2_LONG <- reshape2::melt(averages_H1_H2, id.vars = c("sample", "dataset", "genotype", "complex_genotype", "hap1", "hap2", "pop", "superpop"))
+names(averages_H1_H2_LONG)[names(averages_H1_H2_LONG) == 'variable'] <- 'KANSL_block'
+
+pdf(file = "~/Documents/figures/cnv-plots/KANSL1_block_readdepth_NEW.pdf", width = 8, height = 5)
+ggplot(averages_H1_H2_LONG %>% drop_na(superpop), aes(x = value, fill = KANSL_block)) +
+  geom_histogram(binwidth = 0.025, alpha = 0.6, position = "identity") +
+  scale_fill_manual(values = c(pal[1], pal[7]),
+                    name = "KANSL1 Haplotypes",
+                    labels = c("H1", "H2")) +
+  theme_bw()
+  #facet_grid(superpop ~., scales = "free_y")
+
+#pdf(file = "~/Documents/figures/cnv-plots/KANSL1_H1_readdepth.pdf", width = 8, height = 5)
+# ggplot(averages_H1_H2 %>% drop_na(superpop), aes(x=CN_H1)) + 
+#   geom_histogram(binwidth = 0.025, color = "black", fill = "black") 
+#   #facet_grid(hap1 ~.)
+
+dev.off()
+```
+
+```{r plotting average CNV in ALL datasets as an average per complex haplotype (all datasets) - GENERATING A PDF PLOT HERE}
+
+#overall block in hg38: [46000000,46310000]
+#H1 block: [46095000,46123000]
+#H2 block: [46143000,46238000]
+
+pdf(file = "~/Documents/figures/cnv-plots/average_read_depth_COMPLEX-GENO_FACET.pdf", width = 5, height = 3)
+
+pal = pnw_palette("Bay", 12, type = "continuous")
+
+filtered_df <- combined_final_cnv %>% 
+    drop_na() %>% 
+    group_by(complex_genotype, window_start) %>% summarise(read_depth_mean = mean(read_depth)) %>%
+    filter(window_start >= 46000000 & window_start <= 46310000) 
+    
+cnv_1kg_hgdp_sgdp <- ggplot(data = filtered_df) +
+  geom_point(aes(x = window_start, y = read_depth_mean, color = complex_genotype), size = 0.25) +
+  geom_line(aes(x = window_start, y = read_depth_mean, group = complex_genotype, color = complex_genotype)) +
+  #scale_x_discrete(guide = guide_axis(angle = 30)) +
+  scale_color_manual(values = bay_pal[c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)]) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_rect(aes(xmin = 46095000, xmax = 46123000, ymin = -0.1, ymax = 0.1 )) + #labelling the H1 block with a rectangle
+  annotate('text', x = (46095000 + 46123000)/2, y = -0.2, label = "H1_Dup", size = 1.5) + #labelling the H1 block with a label for the midpoint of the KANSL block
+  geom_rect(aes(xmin = 46143000, xmax = 46238000, ymin = -0.1, ymax = 0.1 )) + #labelling the H2 block with a rectangle
+  annotate('text', x = (46143000 + 46238000)/2, y = -0.2, label = "H2_Dup", size = 1.5) + #labelling the H2 block with a label for the midpoint of the KANSL block
+  facet_wrap(.~complex_genotype)
+
+cnv_1kg_hgdp_sgdp
+
+dev.off()
+
+```
+
+```{r making a final dataframe}
+kg_summary_table <- kg_summary_table %>% mutate(dataset = "1000G")
+HGDP_summary_table <- HGDP_summary_table %>% mutate(dataset = "HGDP")
+SGDP_summary_table <- SGDP_summary_table %>% mutate(dataset = "SGDP")
+
+#names(SGDP_summary_table)[names(SGDP_summary_table) == 'c(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4)'] <- 'genotype'
+
+final_summary_df <- rbind(kg_summary_table, HGDP_summary_table, SGDP_summary_table)
+
+final_summary_df <- merge(final_summary_df, metadata_part_2, by.x = 'sample', by.y = 'sample_id', all = TRUE)
+
+final_summary_df <- final_summary_df[, c("sample", "dataset", "genotype.y", "complex_genotype", "hap1", "hap2", "pop", "superpop")]
+
+names(final_summary_df)[names(final_summary_df) == 'genotype.y'] <- 'genotype'
+```
+
+```{r cleanup on the final dataframe}
+# Load the necessary library
+library(dplyr)
+
+# Find individuals with missing genotype only
+missing_genotype <- final_summary_df %>% filter(is.na(genotype) & !is.na(complex_genotype))
+
+# Print the list of samples with missing genotype only
+missing_genotype_samples <- missing_genotype$sample
+print(missing_genotype_samples)
+
+# Find individuals with missing complex_genotype only
+missing_complex_genotype <- final_summary_df %>% filter(is.na(complex_genotype) & !is.na(genotype))
+
+# Print the list of samples with missing complex_genotype only
+missing_complex_genotype_samples <- missing_complex_genotype$sample
+print(missing_complex_genotype_samples)
+
+# Find individuals with both genotype and complex_genotype missing
+missing_both <- final_summary_df %>% filter(is.na(genotype) & is.na(complex_genotype))
+
+# Print the list of samples with both genotype and complex_genotype missing
+missing_both_samples <- missing_both$sample
+print(missing_both_samples)
+```
+
+```{r cleanup the final dataframe to remake plots for general haplotype}
+final_summary_df_FILTERED <- final_summary_df %>% filter(!(is.na(genotype) & is.na(complex_genotype))) #57 individuals are removed this way
+
+final_summary_df_FILTERED <- final_summary_df_FILTERED %>%
+  mutate(genotype = ifelse(complex_genotype %in% c("H1/H2D", "H1D/H2D", "H1/H2", "H1D/H2", "H1DD/H2D", "H1DD/H2"), "H1H2", genotype))
+
+final_summary_df_FILTERED <- final_summary_df_FILTERED %>%
+  mutate(genotype = ifelse(complex_genotype %in% c("H1/H1D", "H1/H1", "H1D/H1D", "H1D/H1DD"), "H1H1", genotype))
+
+final_summary_df_FILTERED <- final_summary_df_FILTERED %>%
+  mutate(genotype = ifelse(complex_genotype %in% c("H2D/H2D", "H2/H2D", "H2/H2"), "H2H2", genotype))
+
+final_summary_df_FILTERED <- merge(final_summary_df_FILTERED, KG_metadata_UPDATED, by = 'sample', all = TRUE)
+
+final_summary_df_FILTERED <- final_summary_df_FILTERED %>% filter(!(is.na(genotype)))
+
+final_summary_df_FILTERED <- final_summary_df_FILTERED %>%
+  mutate(superpop = coalesce(superpop.x, superpop.y), 
+         pop = coalesce(pop.x, pop.y))
+
+# Print the dataframe to see the changes
+print(final_summary_df_FILTERED)
+
+final_summary_df_FILTERED <- final_summary_df_FILTERED %>%
+  mutate(
+    general_hap1 = ifelse(genotype == "H1H1", "H1*", 
+                    ifelse(genotype == "H1H2", "H1*", 
+                    ifelse(genotype == "H2H2", "H2*", NA))),
+    general_hap2 = ifelse(genotype == "H1H1", "H1*", 
+                    ifelse(genotype == "H1H2", "H2*", 
+                    ifelse(genotype == "H2H2", "H2*", NA)))
+  )
+
+final_summary_df_FILTERED <- final_summary_df_FILTERED %>%
+  mutate(
+    hap1 = ifelse(hap1 == 'H1DD', 'H1D', hap1),
+    hap2 = ifelse(hap2 == 'H1DD', 'H1D', hap2)
+  )
+
+# Replace NA values in hap1 and hap2 with corresponding values from general_hap1 and general_hap2
+final_summary_df_FILTERED <- final_summary_df_FILTERED %>%
+  mutate(
+    hap1 = ifelse(is.na(hap1), general_hap1, hap1),
+    hap2 = ifelse(is.na(hap2), general_hap2, hap2)
+  )
+
+
+final_summary_df_FILTERED <- final_summary_df_FILTERED %>%
+  mutate(
+    general_hap1 = case_when(
+      genotype == "H1H1" ~ "H1*",
+      genotype == "H1H2" ~ "H1*",
+      genotype == "H2H2" ~ "H2*"
+    ),
+    general_hap2 = case_when(
+      genotype == "H1H1" ~ "H1*",
+      genotype == "H1H2" ~ "H2*",
+      genotype == "H2H2" ~ "H2*"
+    )
+  )
+
+#final_summary_df_FILTERED <- final_summary_df_FILTERED %>% filter(!(sample == 'HG01783')) %>% filter(!(sample == 'NA12546B')) %>% filter(!(sample == 'NA12830A')) %>% filter(!(sample == 'NA18874A'))
+
+# Create a named vector with the old values as names and new values as their corresponding values
+relabel <- c("EUR" = "EUR",
+             "EAS" = "EAS",
+             "NA" = "NA",
+             "AMR" = "AMR",
+             "SAS" = "SAS",
+             "AFR" = "AFR",
+             "Central South Asia (HGDP)" = "CSA",
+             "Africa (HGDP)" = "AFR",
+             "Oceania (HGDP)" = "OCN",
+             "Europe (HGDP)" = "EUR",
+             "Oceania (SGDP),Oceania (HGDP)" = "OCN",
+             "Middle East (HGDP)" = "CSA",
+             "America (HGDP)" = "AMR",
+             "East Asia (HGDP)" = "EAS",
+             "OCN" = "OCN",
+             "CSA" = "CSA")
+
+# Apply the relabeling
+final_summary_df_FILTERED$superpop <- relabel[final_summary_df_FILTERED$superpop]
+
+final_summary_df_FILTERED <- final_summary_df_FILTERED[, c("sample", "dataset", "genotype", "complex_genotype", "hap1", "hap2", "pop", "superpop", "general_hap1", "general_hap2")]
+
+# Manually add the metadata
+# Manually add metadata for specific individuals
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$sample == 'HGDP00995'] <- 'Karitiana'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$sample == 'HGDP00999'] <- 'Karitiana'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$sample == 'HGDP01001'] <- 'Karitiana'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$sample == 'HGDP01006'] <- 'Karitiana'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$sample == 'HGDP01009'] <- 'Karitiana'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$sample == 'HGDP01010'] <- 'Karitiana'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$sample == 'HGDP01013'] <- 'Karitiana'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$sample == 'HGDP01014'] <- 'Karitiana'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$sample == 'HGDP01019'] <- 'Karitiana'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$sample == 'LP6005441-DNA_A09'] <- 'Naxi'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$sample == 'LP6005441-DNA_C06'] <- 'Japanese'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$sample == 'LP6005441-DNA_H08'] <- 'Japanese'
+
+final_summary_df_FILTERED$superpop[final_summary_df_FILTERED$sample == 'HGDP00995'] <- 'AMR'
+final_summary_df_FILTERED$superpop[final_summary_df_FILTERED$sample == 'HGDP00999'] <- 'AMR'
+final_summary_df_FILTERED$superpop[final_summary_df_FILTERED$sample == 'HGDP01001'] <- 'AMR'
+final_summary_df_FILTERED$superpop[final_summary_df_FILTERED$sample == 'HGDP01006'] <- 'AMR'
+final_summary_df_FILTERED$superpop[final_summary_df_FILTERED$sample == 'HGDP01009'] <- 'AMR'
+final_summary_df_FILTERED$superpop[final_summary_df_FILTERED$sample == 'HGDP01010'] <- 'AMR'
+final_summary_df_FILTERED$superpop[final_summary_df_FILTERED$sample == 'HGDP01013'] <- 'AMR'
+final_summary_df_FILTERED$superpop[final_summary_df_FILTERED$sample == 'HGDP01014'] <- 'AMR'
+final_summary_df_FILTERED$superpop[final_summary_df_FILTERED$sample == 'HGDP01019'] <- 'AMR'
+final_summary_df_FILTERED$superpop[final_summary_df_FILTERED$sample == 'LP6005441-DNA_A09'] <- 'EAS'
+final_summary_df_FILTERED$superpop[final_summary_df_FILTERED$sample == 'LP6005441-DNA_C06'] <- 'EAS'
+final_summary_df_FILTERED$superpop[final_summary_df_FILTERED$sample == 'LP6005441-DNA_H08'] <- 'EAS'
+```
+
+```{r generate a heatmap with the general haplotypes}
+# Tally the values of general_hap1 and general_hap2 by superpop
+hap_counts <- final_summary_df_FILTERED %>%
+  gather(key = "hap_type", value = "hap", -pop) %>%
+  filter(hap %in% c('H1*', 'H2*')) %>%
+  count(pop, hap) %>%
+  spread(key = hap, value = n, fill = 0)
+
+hap_counts <- final_summary_df_FILTERED %>%
+  gather(key = "hap_type", value = "hap", -superpop) %>%
+  filter(hap %in% c('H1*', 'H2*')) %>%
+  count(superpop, hap) %>%
+  spread(key = hap, value = n, fill = 0)
+
+# Calculate row and column sums
+hap_counts$Total <- rowSums(hap_counts[, 2:3])
+col_sums <- colSums(hap_counts[, 2:3])
+
+# Calculate proportions
+hap_counts$H1_prop <- hap_counts$H1 / hap_counts$Total
+hap_counts$H2_prop <- hap_counts$H2 / hap_counts$Total
+
+# Reshape data for heatmap
+hap_counts_long <- melt(hap_counts[, c('superpop', 'H1_prop', 'H2_prop')], id.vars = 'superpop')
+
+# Add proportions as labels
+hap_counts_long$label <- sprintf("%.2f", hap_counts_long$value)
+
+# Create the heatmap
+heatmap_plot <- ggplot(hap_counts_long, aes(x = variable, y = superpop, fill = value)) + 
+  geom_tile() + 
+  geom_text(aes(label = label), color = "black", size = 3) + 
+  scale_fill_gradient(low = "white", high = "#00496f") + 
+  labs(title = "Heatmap of Haplotype Proportions", x = "Haplotype", y = "Superpopulation", fill = "Proportion") + 
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 0))
+
+# Create a plot for row totals
+row_totals_plot <- ggplot(hap_counts, aes(x = Total/2, y = superpop)) + 
+  geom_tile(fill = "lightgrey") + 
+  geom_text(aes(label = paste0("N = ", Total/2)), color = "black", size = 3.5) + 
+  labs(x = "Total Count", y = "") + 
+  theme_minimal() + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), axis.title.y = element_blank())
+
+# Create a plot for column totals
+col_totals_df <- data.frame(variable = names(col_sums), value = col_sums, label = paste0("N = ", col_sums))
+col_totals_plot <- ggplot(col_totals_df, aes(x = variable, y = 1, fill = value)) + 
+  geom_tile(fill = "lightgrey") + 
+  geom_text(aes(label = label), color = "black", size = 3) + 
+  labs(x = "", y = "Total Count") + 
+  theme_minimal() + 
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(), axis.text.x = element_text(angle = 0))
+
+# Arrange the plots
+grid.arrange(
+  heatmap_plot, col_totals_plot, row_totals_plot,
+  ncol = 1, nrow = 3, 
+  widths = c(3), heights = c(2, 0.75, 1.5)
+)
+```
+
+```{r}
+# Reshape the dataframe to long format
+data_long <- data_long_filtered_trios %>% 
+  filter(!is.na(complex_genotype)) %>%
+  filter(!(complex_genotype == 'complex_genotype_TBD'))
+  #dplyr::pivot_longer(cols = c(hap1, hap2), names_to = "hap_type", values_to = "haplotype")
+
+# Summarize the haplotype counts by superpop
+summary_table <- data_long %>%
+  dplyr::group_by(pop, haplotype) %>%
+  dplyr::summarize(count = n()) %>%
+  ungroup()
+
+# Calculate the total counts per superpop
+total_counts <- data_long_filtered_trios %>%
+  group_by(pop) %>%
+  summarize(total = n()) %>%
+  ungroup()
+
+# Merge the total counts with the summary table and calculate proportions
+summary_table <- summary_table %>%
+  left_join(total_counts, by = "pop") %>%
+  mutate(proportion = count / total) %>%
+  dplyr::select(pop, haplotype, count, proportion)
+
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Yoruba'] <- 'YRI'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Punjabi'] <- 'PJL'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Japanese'] <- 'JPT'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'JPL'] <- 'JPT'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Finnish'] <- 'FIN'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'English'] <- 'GBR'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Esan'] <- 'ESN'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Colombian'] <- 'CLM'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Bengali'] <- 'BEB'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'BedouinB'] <- 'Bedouin'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Bergamo'] <- 'Bergamo Italian'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Northern Han'] <- 'Han'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Papuan,Papuan Highlands'] <- 'Papuan'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Papuan,Papuan Sepik'] <- 'Papuan'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Eskimo_Chaplin'] <- 'Eskimo'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Eskimo_Naukan'] <- 'Eskimo'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Eskimo_Sireniki'] <- 'Eskimo'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Tuscan'] <- 'TSI'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'BantuKenya'] <- 'Bantu Kenya'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Crete'] <- 'Greek'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Mayan'] <- 'Maya'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'Papuan Sepik'] <- 'Papuan'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'BantuHerero'] <- 'Bantu South Africa'
+final_summary_df_FILTERED$pop[final_summary_df_FILTERED$pop == 'BantuTswana'] <- 'Bantu South Africa'
+
+table_pop <- table(final_summary_df_FILTERED$pop)
+```
+
+```{r excluding ALL THE TRIO samples}
+library(jsonlite)
+
+data_long 
+
+sample_names_TRIOS <- read.table("~/Documents/datasets/metadata/sample_names_TRIOS.txt", quote="\"", comment.char="")
+
+data_long_filtered_trios <- data_long %>%
+  filter(!(sample %in% sample_names_TRIOS$V1))
+
+##Debug
+list_of_files <- readLines("~/Downloads/list_of_files.txt")
+sample_names <- sapply(strsplit(list_of_files, "\\."), `[`, 1)
+
+missing_complex_genotype <- data_long_filtered_trios %>%
+  filter(is.na(complex_genotype)) %>%
+  select(sample, dataset, genotype, complex_genotype) %>%
+  distinct()
+
+missing_complex_genotype <- missing_complex_genotype %>%
+  mutate(already_run_but_missing = sample %in% sample_names)
+
+d4_data <- fromJSON("~/Downloads/d4_1KG.json")
+
+d4_samples <- names(d4_data$samples)
+d4_sample_names <- sapply(strsplit(d4_samples, "\\."), `[`, 1)
+
+missing_complex_genotype <- missing_complex_genotype %>%
+  mutate(sample_in_d4 = sample %in% d4_sample_names)
+
+data_long_filtered_trios <- data_long_filtered_trios %>%
+  mutate(
+    dataset = if_else(sample %in% d4_sample_names & is.na(dataset), "1000G_TBD", dataset),
+    complex_genotype = if_else(sample %in% d4_sample_names & is.na(complex_genotype), "complex_genotype_TBD", complex_genotype)
+  )
+```
+
+```{r}
+# Create pie charts
+ggplot(summary_table, aes(x = "", y = proportion, fill = haplotype)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y") +
+  facet_wrap(~ superpop) +
+  labs(title = "Haplotype Distribution by Superpopulation", x = "", y = "") +
+  theme_void() +
+  theme(legend.title = element_blank())
+```
+
+
+
