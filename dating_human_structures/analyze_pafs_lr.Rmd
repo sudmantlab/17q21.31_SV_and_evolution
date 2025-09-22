@@ -1,0 +1,969 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(pafr)
+```
+
+```{r}
+# alignment <- read_paf("~/Documents/datasets/HGSVC/trial_6_samples_unfiltered/NA20847_haplotype2_aligned_paf_FLAGS_MERGED.paf")
+
+#alignment <- read_paf("~/Downloads/mPanPan.pri_all_pafs_MERGED.paf")
+
+alignment <- read_paf("~/Downloads/mGorGor.alt_all_pafs_MERGED (1).paf")
+alignment <- read_paf("~/Downloads/mPanPan.pri_all_pafs_MERGED.paf")
+alignment <- read_paf("~/Downloads/mPonAbe.hap2_all_pafs_MERGED_sliding.paf")
+alignment <- read_paf("~/Downloads/GorillaPR00101_hap2_all_pafs_MERGED.paf")
+alignment <- read_paf("~/Downloads/sliding_windows_bundle0_14_primates.paf")
+alignment <- read_paf("~/Downloads/inverted_chimp_hap2_aligned_paf_FLAGS_all_pafs_MERGED.paf")
+
+alignment <- alignment
+
+
+# HG00513_haplotype1_aligned_paf_FLAGS_MERGED_FILTERED <- read_delim("Documents/datasets/HGSVC/trial_6_samples_filtered/HG00513_haplotype1_aligned_paf_FLAGS_MERGED_FILTERED.paf", delim = "\t", escape_double = FALSE, col_names = FALSE, trim_ws = TRUE)
+
+#HG00513_haplotype1_aligned_paf_FLAGS_MERGED_FILTERED <- read_delim("~/Downloads/mPanPan.pri_all_pafs_MERGED.paf", delim = "\t", escape_double = FALSE, col_names = FALSE, trim_ws = TRUE)
+
+#HG00513_haplotype1_aligned_paf_FLAGS_MERGED_FILTERED <- read_delim("~/Downloads/mGorGor.alt_all_pafs_MERGED (1).paf", delim = "\t", escape_double = FALSE, col_names = FALSE, trim_ws = TRUE)
+
+alignment_table <- HG00513_haplotype1_aligned_paf_FLAGS_MERGED_FILTERED %>% filter(`X12` == 60) %>% filter(`X10` > 10000)
+
+max_alen_row <- alignment_table %>% slice_max(`X10`, n = 1)  # Replace V11 with the actual column for 'alen'
+
+max_qname <- max_alen_row$X1  # Replace V1 with the actual column for 'qname'
+
+alignment <- alignment %>% filter(qname == max_qname) %>% filter(alen > 10000) %>% filter(mapq == 60)
+
+synteny_plot <- plot_synteny(alignment, q_chrom = max_qname, t_chrom = "chr17:45275488-46921902", centre = TRUE) + 
+  theme_bw()
+
+synteny_plot
+
+# ggsave("~/Documents/datasets/HGSVC/trial_6_samples_filtered/HG00513_haplotype1_synteny.jpg", plot = synteny_plot, width = 12, height = 4)
+```
+
+```{r}
+# Load libraries
+library(tidyverse)
+library(pafr)  # If you are using the 'pafr' package for PAF visualization
+library(patchwork)  # For combining plots
+
+# Specify the folder containing PAF files
+paf_folder <- "~/Documents/datasets/HGSVC/trial_6_samples_filtered/"
+paf_files <- list.files(paf_folder, pattern = "\\.paf$", full.names = TRUE)
+
+# Initialize an empty list to store the plots
+plots <- list()
+
+# Create dot plots for each file and save them separately
+for (file in paf_files) {
+  # Read the alignment file
+  alignment <- read_paf(file)
+  
+  # Extract file name without extension for labeling and output file name
+  file_label <- tools::file_path_sans_ext(basename(file))
+  
+  # Create the dot plot
+  p <- dotplot(alignment, label_seqs = TRUE, order_by = "qstart") +
+    theme_bw() +
+    ggtitle(file_label)  # Add file name as the plot title
+  
+  # Save the plot as a PNG or PDF (adjust as needed)
+  output_file <- paste0(paf_folder, "/", file_label, "_dotplot.png")
+  ggsave(output_file, plot = p, width = 10, height = 8)
+  
+  # Print message for tracking progress
+  message("Saved dot plot for ", file_label, " to ", output_file)
+}
+```
+
+```{r}
+library(tidyverse)
+library(dplyr)
+
+# Function to process a single .paf file
+process_paf_file <- function(paf_file, output_dir) {
+  # Read the input alignment file
+  alignment <- read_delim(paf_file, delim = "\t", escape_double = FALSE, col_names = FALSE, trim_ws = TRUE)
+  
+  # Filter for alignment table
+  alignment_table <- alignment %>% 
+    filter(X12 == 60) %>% 
+    filter(X10 > 10000)
+  
+  # Find the row with the maximum alignment length
+  max_alen_row <- alignment_table %>% slice_max(X10, n = 1)
+  
+  # Extract the qname with the maximum alignment length
+  max_qname <- max_alen_row$X1
+  
+  #Read in paf file
+  paf_file_read <- read_paf(paf_file)
+  
+  # Further filter the alignment based on qname, alen, and mapq
+  paf_file_read <- paf_file_read %>%
+    filter(qname == max_qname) %>%
+    filter(alen > 10000) %>%
+    filter(mapq == 60)
+  
+  # Generate the synteny plot
+  synteny_plot <- plot_synteny(
+    paf_file_read,
+    q_chrom = max_qname,
+    t_chrom = "chr17:45275488-46921902",
+    centre = TRUE
+  ) + theme_bw()
+  
+  # Construct output file name
+  output_file <- file.path(output_dir, paste0(tools::file_path_sans_ext(basename(paf_file)), "_synteny.jpg"))
+  
+  # Save the plot
+  ggsave(output_file, plot = synteny_plot, width = 12, height = 4)
+}
+
+# Main script
+process_all_paf_files <- function(input_dir, output_dir) {
+  # Get a list of all .paf files in the input directory
+  paf_files <- list.files(input_dir, pattern = "\\.paf$", full.names = TRUE)
+  
+  # Create the output directory if it doesn't exist
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+  }
+  
+  # Process each file
+  lapply(paf_files, process_paf_file, output_dir = output_dir)
+}
+
+# Specify the input and output directories
+input_dir <- "~/Documents/datasets/HGSVC/trial_6_samples_unfiltered"
+output_dir <- "~/Documents/datasets/HGSVC/synteny_plots"
+
+# Run the batch processing
+process_all_paf_files(input_dir, output_dir)
+```
+
+```{r}
+HGSVC_extraction_regions <- read.csv("~/Downloads/HGSVC_extraction_regions.csv")
+
+p <- ggplot(HGSVC_extraction_regions %>% filter(alen > 1500000), aes(x=alen)) + geom_histogram(binwidth = 10000)
+p
+```
+
+```{r}
+# Read the PAF file (no header)
+paf_data <- read.table("~/Downloads/gene_tester_output.paf", header = FALSE, stringsAsFactors = FALSE)
+
+# PAF Columns (based on Minimap2 output):
+# V1: Query sequence name
+# V2: Query sequence length
+# V3: Query alignment start (0-based)
+# V4: Query alignment end
+# V5: Strand (+ or -)
+# V6: Target sequence name (e.g., chromosome/scaffold)
+# V7: Target sequence length
+# V8: Target alignment start (0-based)
+# V9: Target alignment end
+# V10: Number of matching bases in alignment
+# V11: Alignment block length
+# V12: Mapping quality (optional)
+
+# If you only need the key fields for UCSC (chrom, start, end, name, score, strand):
+bed_data <- paf_data %>%
+  select(V6, V8, V9, V1, V12 = 0, V5) %>%  # Target name, start, end, query name, score, strand
+  rename(chrom = V6, start = V8, end = V9, name = V1, score = V12, strand = V5) %>%
+  arrange(chrom, start)
+
+# Save the BED file
+bed_file <- "~/Downloads/output.bed"  # Path to save the BED file
+write.table(bed_data, bed_file, sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+
+cat("BED file created:", bed_file, "\n")
+```
+
+```{r filtering and determining the sliding windows}
+library(readr)
+library(dplyr)
+library(purrr)
+library(stringr)
+
+# Define the directory containing PAF files
+paf_dir <- "~/Documents/datasets/primate_sliding_window_pafs/"
+
+# List all .paf files in the directory
+paf_files <- list.files(paf_dir, pattern = "\\.paf$", full.names = TRUE)
+
+# Extract sample names from file paths (including chm13_H1, H1D, and H2)
+extract_sample_name <- function(file_path) {
+  # Extract sample name from filename
+  sample <- str_extract(basename(file_path), "m[A-Za-z]+\\.(alt|pri|hap[12])|chm13_H1|H2|H1D")
+  return(sample)
+}
+
+# Create a named list (dictionary) mapping sample names to their paths
+# samples_dict <- list(
+#   "mPanTro.hap1" = "/global/home/users/sridharan/scratch/scripts/human_primate_trees_FINAL/primate_fastas/chimp_long_read/mPanTro3.hap1.cur.20231122.fasta.gz",
+#   "mPanTro.hap2" = "/global/home/users/sridharan/scratch/scripts/human_primate_trees_FINAL/primate_fastas/chimp_long_read/mPanTro3.hap2.cur.20231122.fasta.gz",
+#   "mPonAbe.hap1" = "/global/home/users/sridharan/scratch/scripts/human_primate_trees_FINAL/primate_fastas/ponAbe_long_read/mPonAbe1.hap1.cur.20231205.fasta.gz",
+#   "mPonAbe.hap2" = "/global/home/users/sridharan/scratch/scripts/human_primate_trees_FINAL/primate_fastas/ponAbe_long_read/mPonAbe1.hap2.cur.20231205.fasta.gz",
+#   "mPonPyg.hap1" = "/global/home/users/sridharan/scratch/scripts/human_primate_trees_FINAL/primate_fastas/ponPyg_long_read/mPonPyg2.hap1.cur.20231122.fasta.gz",
+#   "mPonPyg.hap2" = "/global/home/users/sridharan/scratch/scripts/human_primate_trees_FINAL/primate_fastas/ponPyg_long_read/mPonPyg2.hap2.cur.20231122.fasta.gz",
+#   "mGorGor.pri"  = "/global/home/users/sridharan/scratch/scripts/human_primate_trees_FINAL/primate_fastas/gorGor_long_read/mGorGor1.pri.cur.20231122.fasta.gz",
+#   "mPanPan.pri"  = "/global/home/users/sridharan/scratch/scripts/human_primate_trees_FINAL/primate_fastas/panPan_long_read/mPanPan1.pri.cur.20231122.fasta.gz",
+#   "mGorGor.alt"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mGorGor.alt/mGorGor1.alt.cur.20231122.fasta.gz",
+#   "mPanPan.alt"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanPan.alt/mPanPan1.alt.cur.20231122.fasta.gz",
+#   "H1D"          = "/global/home/users/sridharan/scratch/scripts/PGRTK/HGSVC_HPRC_FINAL_FINAL_FASTA_FILES/fastas_extracted/NA21110_hap1_CM089673.1_46713933_48497812.extracted.fasta",
+#   "chm13_H1"     = "/global/home/users/sridharan/scratch/scripts/PGRTK/hsa1_chr17_region.fa", 
+#   "H2"           = "/global/home/users/sridharan/scratch/scripts/PGRTK/HGSVC_HPRC_FINAL_FINAL_FASTA_FILES/fastas_extracted/HG03874_hap2_CM089483.1_45294200_47197380.extracted.fasta"
+# )
+
+#Create a named list (dictionary) mapping sample names to their paths
+samples_dict <- list(
+"mPanTro.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanTro.hap1/mPanTro.hap1.fasta",
+  "mPanTro.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanTro.hap2/mPanTro.hap2.fasta",
+  "mPonAbe.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPonAbe.hap1/mPonAbe.hap1.fasta",
+  "mPonAbe.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPonAbe.hap2/mPonAbe.hap2.fasta",
+  "mPonPyg.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPonPyg.hap1/mPonPyg.hap1.fasta",
+  "mPonPyg.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPonPyg.hap2/mPonPyg.hap2.fasta",
+  "mGorGor.pri"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mGorGor.pri/mGorGor.pri.fasta",
+  "mPanPan.pri"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanPan.pri/mPanPan.pri.fasta",
+  "mGorGor.alt"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mGorGor.alt/mGorGor.alt.fasta",
+  "mPanPan.alt"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanPan.alt/mPanPan.alt.fasta",
+  "H1D"          = "/global/home/users/sridharan/scratch/scripts/PGRTK/HGSVC_HPRC_FINAL_FINAL_FASTA_FILES/fastas_extracted/NA21110_hap1_CM089673.1_46713933_48497812.extracted.fasta",
+  "chm13_H1"     = "/global/home/users/sridharan/scratch/scripts/PGRTK/hsa1_chr17_region.fa",
+  "H2"           = "/global/home/users/sridharan/scratch/scripts/PGRTK/HGSVC_HPRC_FINAL_FINAL_FASTA_FILES/fastas_extracted/HG03874_hap2_CM089483.1_45294200_47197380.extracted.fasta"
+)
+
+# Read and combine all .paf files, adding sample and file path columns
+alignment <- map_dfr(paf_files, function(file_path) {
+  df <- read_tsv(file_path, col_names = FALSE)
+  sample_name <- extract_sample_name(file_path)
+  df <- df %>%
+    mutate(file_path = file_path, sample = sample_name) %>%
+    mutate(genome_path = samples_dict[[sample_name]])
+  return(df)
+})
+
+# Select distinct rows and keep relevant columns
+alignment <- alignment %>%
+  dplyr::distinct(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12, sample, genome_path) %>%
+  dplyr::mutate(
+    start = if_else(X5 == "-", X4, X3),  # If X5 is "-", start is X4; otherwise, start is X3
+    end = if_else(X5 == "-", X3, X4)     # If X5 is "+", end is X3; otherwise, end is X4
+  ) %>%
+  dplyr::select(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12, sample, genome_path, start, end)
+
+# View the first few rows
+head(alignment)
+```
+
+```{r making scripts for each of the windows}
+# Define output file
+output_script <- "~/Documents/datasets/primate_sliding_window_pafs/extract_sequences.sh"
+
+# Start the bash script
+bash_script <- c("#!/bin/bash", "")
+
+# Process each group by X6
+alignment %>%
+  group_by(X6) %>%
+  summarise(commands = list(paste0(
+    "seqkit faidx ", genome_path, " ", X1, ":", start, "-", end, 
+    " -o ", X6, "/", X1, "_", start, "_", end, ".fa"
+  ))) %>%
+  rowwise() %>%
+  mutate(script = list(c(
+    paste0("[ ! -d ", X6, " ] && mkdir -p ", X6),  # Create folder only if it doesn't exist
+    unlist(commands),        # Run seqkit commands
+    paste0("cat ", X6, "/*.fa > ", X6, "/", X6, ".fa")
+  ))) %>%
+  pull(script) -> all_commands
+
+# Flatten the command list
+bash_script <- c(bash_script, unlist(all_commands))
+
+# Write to file
+writeLines(bash_script, output_script)
+
+# Make the script executable
+system(paste("chmod +x", output_script))
+
+cat("Bash script generated:", output_script, "\n")
+```
+
+```{r for 17 haps}
+#Create a named list (dictionary) mapping sample names to their paths
+samples_dict <- list(
+  "mPanTro.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanTro.hap1/mPanTro.hap1.fasta",
+  "mPanTro.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanTro.hap2/mPanTro.hap2.fasta",
+  "mPonAbe.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPonAbe.hap1/mPonAbe.hap1.fasta",
+  "mPonAbe.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPonAbe.hap2/mPonAbe.hap2.fasta",
+  "mPonPyg.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPonPyg.hap1/mPonPyg.hap1.fasta",
+  "mPonPyg.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPonPyg.hap2/mPonPyg.hap2.fasta",
+  "mGorGor.pri"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mGorGor.pri/mGorGor.pri.fasta",
+  "mPanPan.pri"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanPan.pri/mPanPan.pri.fasta",
+  "mGorGor.alt"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mGorGor.alt/mGorGor.alt.fasta",
+  "mPanPan.alt"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanPan.alt/mPanPan.alt.fasta",
+  "GorillaPR00053.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/GorillaPR00053_hap1/GorillaPR00053_hap1.fasta",
+  "GorillaPR00053.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/GorillaPR00053_hap2/GorillaPR00053_hap2.fasta",
+  "GorillaPR00101.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/GorillaPR00101_hap1/GorillaPR00101_hap1.fasta",
+  "GorillaPR00101.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/GorillaPR00101_hap2/GorillaPR00101_hap2.fasta",
+  "H1D" = "/global/home/users/sridharan/scratch/scripts/PGRTK/HGSVC_HPRC_FINAL_FINAL_FASTA_FILES/fastas_extracted/NA21110_hap1_CM089673.1_46713933_48497812.extracted.fasta",
+  "chm13_H1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/hsa1_chr17_region.fa",
+  "H2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/HGSVC_HPRC_FINAL_FINAL_FASTA_FILES/fastas_extracted/HG03874_hap2_CM089483.1_45294200_47197380.extracted.fasta"
+)
+
+alignment <- read_paf("~/Downloads/sliding_windows_bundle0_14_primates (1).paf") %>%
+  dplyr::select("qname", "qlen", "qstart", "qend", "strand", "tname", "tlen", "tstart", "tend", "nmatch", "alen", "mapq")
+alignment_1 <- read_paf("~/Downloads/sliding_windows_bundle0_humans.paf") %>%
+  dplyr::select("qname", "qlen", "qstart", "qend", "strand", "tname", "tlen", "tstart", "tend", "nmatch", "alen", "mapq")
+merged_alignment <- rbind(alignment, alignment_1)
+alignment <- merged_alignment
+  
+alignment[c("filepath", "qname")] <- do.call(rbind, strsplit(alignment$qname, " "))
+alignment$filepath <- gsub("(GorillaPR[0-9]+)_hap([12])", "\\1.hap\\2", alignment$filepath)
+alignment[c("sample", "filepath")] <- do.call(rbind, strsplit(alignment$filepath, "_"))
+alignment$window <- sub(".*_", "", alignment$tname)
+alignment$window <- sprintf("window%02d", as.integer(gsub("window", "", alignment$window)))
+alignment$sample[alignment$sample == "CM089673.1:46713933-48497812"] <- "H1D"
+alignment$sample[alignment$sample == "CM089483.1:45294200-47197380"] <- "H2"
+alignment$sample[alignment$sample == "chr17"] <- "chm13_H1"
+
+
+# Get the max alen rows for the three target samples
+top_three <- alignment %>%
+  filter(sample %in% c("chm13_H1", "H1D", "H2")) %>%
+  group_by(sample, window) %>%
+  slice_max(alen, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+# Get all the other samples (not the three)
+others <- alignment %>%
+  filter(!sample %in% c("chm13_H1", "H1D", "H2"))
+
+# Combine them
+alignment_filtered <- bind_rows(top_three, others)
+
+alignment <- alignment_filtered
+
+alignment <- alignment %>%
+  rowwise() %>%
+  mutate(genome_path = samples_dict[[sample]]) %>%
+  ungroup()
+
+# Select distinct rows and keep relevant columns
+alignment <- alignment %>%
+  dplyr::distinct(qname, qlen, qstart, qend, strand, tname, tlen, tstart, tend, nmatch, alen, mapq, sample, genome_path, window) %>%
+  dplyr::mutate(
+    start = if_else(strand == "-", qend, qstart),  # If X5 is "-", start is X4; otherwise, start is X3
+    end = if_else(strand == "-", qstart, qend)     # If X5 is "+", end is X3; otherwise, end is X4
+  ) %>%
+  dplyr::select(qname, qlen, qstart, qend, strand, tname, tlen, tstart, tend, nmatch, alen, mapq, sample, genome_path, window, start, end)
+
+# Filter for only mPanTro.hap1 and mPanTro.hap2
+alignment_panTro_bundle0 <- alignment %>%
+  filter(sample %in% c("mPanTro.hap1", "mPanTro.hap2")) %>%
+  mutate(bundle = "bundle0")
+
+# Define output file
+output_script <- "~/Documents/datasets/primate_sliding_window_pafs/extract_sequences_17samples.sh"
+
+# Start the bash script
+bash_script <- c("#!/bin/bash", "")
+
+# Process each group by X6
+alignment %>%
+  group_by(window) %>%
+  summarise(commands = list(paste0(
+    "seqkit faidx ", genome_path, " ", qname, ":", start, "-", end, 
+    " -o ", window, "/", qname, "_", start, "_", end, ".fa"
+  ))) %>%
+  rowwise() %>%
+  mutate(script = list(c(
+    paste0("[ ! -d ", window, " ] && mkdir -p ", window),  # Create folder only if it doesn't exist
+    unlist(commands),        # Run seqkit commands
+    paste0("cat ", window, "/*.fa > ", window, "/", window, ".fa")
+  ))) %>%
+  pull(script) -> all_commands
+
+# Flatten the command list
+bash_script <- c(bash_script, unlist(all_commands))
+
+# Write to file
+writeLines(bash_script, output_script)
+
+# Make the script executable
+system(paste("chmod +x", output_script))
+
+cat("Bash script generated:", output_script, "\n")
+```
+
+```{r for all of bundle 0}
+# Filter only window01 and window92
+subset_windows <- alignment %>%
+  filter(window %in% c("window01", "window92")) %>%
+  dplyr::select(sample, qname, start, end, window, genome_path)
+
+# Pivot wider to get start from window01 and end from window92
+window_ranges <- subset_windows %>%
+  pivot_wider(
+    id_cols = c(sample, qname, genome_path),
+    names_from = window,
+    values_from = c(start, end),
+    names_sep = "_"
+  ) %>%
+  filter(!is.na(start_window01) & !is.na(end_window92)) %>%
+  mutate(
+    output_filename = paste0("bundle0/", sample, "_", start_window01, "_", end_window92, ".fa"),
+    seqkit_cmd = paste0(
+      "seqkit faidx ", genome_path, " ", qname, ":", start_window01, "-", end_window92,
+      " -o ", output_filename
+    )
+  )
+
+# Start building the bash script
+bash_script_bundle0 <- c(
+  "#!/bin/bash",
+  "",
+  "[ ! -d bundle0 ] && mkdir -p bundle0",  # Make directory if it doesn't exist
+  window_ranges$seqkit_cmd,
+  paste0("cat bundle0/*.fa > bundle0/bundle0.fa")  # Concatenate all into one file
+)
+
+# Write to bundle0_extract.sh
+bundle0_script_path <- "~/Documents/datasets/primate_sliding_window_pafs/bundle0_extract.sh"
+writeLines(bash_script_bundle0, bundle0_script_path)
+
+# Make the script executable
+system(paste("chmod +x", bundle0_script_path))
+
+cat("Script generated:", bundle0_script_path, "\n")
+```
+
+```{r for 17 haps in bundle 1}
+#Create a named list (dictionary) mapping sample names to their paths
+samples_dict <- list(
+  "mPanTro.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanTro.hap1/mPanTro.hap1.fasta",
+  "mPanTro.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanTro.hap2/mPanTro.hap2.fasta",
+  "mPonAbe.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPonAbe.hap1/mPonAbe.hap1.fasta",
+  "mPonAbe.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPonAbe.hap2/mPonAbe.hap2.fasta",
+  "mPonPyg.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPonPyg.hap1/mPonPyg.hap1.fasta",
+  "mPonPyg.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPonPyg.hap2/mPonPyg.hap2.fasta",
+  "mGorGor.pri"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mGorGor.pri/mGorGor.pri.fasta",
+  "mPanPan.pri"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanPan.pri/mPanPan.pri.fasta",
+  "mGorGor.alt"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mGorGor.alt/mGorGor.alt.fasta",
+  "mPanPan.alt"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanPan.alt/mPanPan.alt.fasta",
+  "GorillaPR00053.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/GorillaPR00053_hap1/GorillaPR00053_hap1.fasta",
+  "GorillaPR00053.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/GorillaPR00053_hap2/GorillaPR00053_hap2.fasta",
+  "GorillaPR00101.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/GorillaPR00101_hap1/GorillaPR00101_hap1.fasta",
+  "GorillaPR00101.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/GorillaPR00101_hap2/GorillaPR00101_hap2.fasta",
+  "H1D" = "/global/home/users/sridharan/scratch/scripts/PGRTK/HGSVC_HPRC_FINAL_FINAL_FASTA_FILES/fastas_extracted/NA21110_hap1_CM089673.1_46713933_48497812.extracted.fasta",
+  "chm13_H1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/hsa1_chr17_region.fa",
+  "H2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/HGSVC_HPRC_FINAL_FINAL_FASTA_FILES/fastas_extracted/HG03874_hap2_CM089483.1_45294200_47197380.extracted.fasta"
+)
+
+alignment <- read_paf("~/Downloads/sliding_windows_bundle1_14_primates.paf") %>%
+  dplyr::select("qname", "qlen", "qstart", "qend", "strand", "tname", "tlen", "tstart", "tend", "nmatch", "alen", "mapq")
+alignment_1 <- read_paf("~/Downloads/sliding_windows_bundle1_humans.paf") %>%
+  dplyr::select("qname", "qlen", "qstart", "qend", "strand", "tname", "tlen", "tstart", "tend", "nmatch", "alen", "mapq")
+merged_alignment <- rbind(alignment, alignment_1)
+alignment <- merged_alignment
+  
+alignment[c("filepath", "qname")] <- do.call(rbind, strsplit(alignment$qname, " "))
+alignment$filepath <- gsub("(GorillaPR[0-9]+)_hap([12])", "\\1.hap\\2", alignment$filepath)
+alignment[c("sample", "filepath")] <- do.call(rbind, strsplit(alignment$filepath, "_"))
+alignment$window <- sub(".*_", "", alignment$tname)
+alignment$window <- sprintf("window%02d", as.integer(gsub("window", "", alignment$window)))
+alignment$sample[alignment$sample == "CM089673.1:46713933-48497812"] <- "H1D"
+alignment$sample[alignment$sample == "CM089483.1:45294200-47197380"] <- "H2"
+alignment$sample[alignment$sample == "chr17"] <- "chm13_H1"
+
+
+# Get the max alen rows for the three target samples
+top_three <- alignment %>%
+  filter(sample %in% c("chm13_H1", "H1D", "H2")) %>%
+  group_by(sample, window) %>%
+  slice_max(alen, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+# Get all the other samples (not the three)
+others <- alignment %>%
+  filter(!sample %in% c("chm13_H1", "H1D", "H2"))
+
+# Combine them
+alignment_filtered <- bind_rows(top_three, others)
+
+alignment <- alignment_filtered
+
+alignment <- alignment %>%
+  rowwise() %>%
+  mutate(genome_path = samples_dict[[sample]]) %>%
+  ungroup()
+
+# Select distinct rows and keep relevant columns
+alignment <- alignment %>%
+  dplyr::distinct(qname, qlen, qstart, qend, strand, tname, tlen, tstart, tend, nmatch, alen, mapq, sample, genome_path, window) %>%
+  dplyr::mutate(
+    start = if_else(strand == "-", qend, qstart),  # If X5 is "-", start is X4; otherwise, start is X3
+    end = if_else(strand == "-", qstart, qend)     # If X5 is "+", end is X3; otherwise, end is X4
+  ) %>%
+  dplyr::select(qname, qlen, qstart, qend, strand, tname, tlen, tstart, tend, nmatch, alen, mapq, sample, genome_path, window, start, end)
+
+# Filter for only mPanTro.hap1 and mPanTro.hap2
+alignment_panTro_bundle1 <- alignment %>%
+  filter(sample %in% c("mPanTro.hap1", "mPanTro.hap2")) %>%
+  mutate(bundle = "bundle1")
+
+# Define output file
+output_script <- "~/Documents/datasets/primate_sliding_window_pafs/extract_sequences_17samples_BUNDLE1.sh"
+
+# Start the bash script
+bash_script <- c("#!/bin/bash", "")
+
+# Process each group by X6
+alignment %>%
+  group_by(window) %>%
+  summarise(commands = list(paste0(
+    "seqkit faidx ", genome_path, " ", qname, ":", start, "-", end, 
+    " -o ", "windows/", window, "/", qname, "_", start, "_", end, ".fa"
+  ))) %>%
+  rowwise() %>%
+  mutate(script = list(c(
+    paste0("[ ! -d ", window, " ] && mkdir -p ", window),  # Create folder only if it doesn't exist
+    unlist(commands),        # Run seqkit commands
+    paste0("cat ", "windows/", window, "/*.fa > ", "windows/", window, "/", window, ".fa")
+  ))) %>%
+  pull(script) -> all_commands
+
+# Flatten the command list
+bash_script <- c(bash_script, unlist(all_commands))
+
+# Write to file
+writeLines(bash_script, output_script)
+
+# Make the script executable
+system(paste("chmod +x", output_script))
+
+cat("Bash script generated:", output_script, "\n")
+```
+
+```{r for 17 haps in bundle 2}
+#Create a named list (dictionary) mapping sample names to their paths
+samples_dict <- list(
+  "mPanTro.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanTro.hap1/mPanTro.hap1.fasta",
+  "mPanTro.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanTro.hap2/mPanTro.hap2.fasta",
+  "mPonAbe.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPonAbe.hap1/mPonAbe.hap1.fasta",
+  "mPonAbe.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPonAbe.hap2/mPonAbe.hap2.fasta",
+  "mPonPyg.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPonPyg.hap1/mPonPyg.hap1.fasta",
+  "mPonPyg.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPonPyg.hap2/mPonPyg.hap2.fasta",
+  "mGorGor.pri"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mGorGor.pri/mGorGor.pri.fasta",
+  "mPanPan.pri"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanPan.pri/mPanPan.pri.fasta",
+  "mGorGor.alt"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mGorGor.alt/mGorGor.alt.fasta",
+  "mPanPan.alt"  = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/mPanPan.alt/mPanPan.alt.fasta",
+  "GorillaPR00053.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/GorillaPR00053_hap1/GorillaPR00053_hap1.fasta",
+  "GorillaPR00053.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/GorillaPR00053_hap2/GorillaPR00053_hap2.fasta",
+  "GorillaPR00101.hap1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/GorillaPR00101_hap1/GorillaPR00101_hap1.fasta",
+  "GorillaPR00101.hap2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/PRIMATES/GorillaPR00101_hap2/GorillaPR00101_hap2.fasta",
+  "H1D" = "/global/home/users/sridharan/scratch/scripts/PGRTK/HGSVC_HPRC_FINAL_FINAL_FASTA_FILES/fastas_extracted/NA21110_hap1_CM089673.1_46713933_48497812.extracted.fasta",
+  "chm13_H1" = "/global/home/users/sridharan/scratch/scripts/PGRTK/hsa1_chr17_region.fa",
+  "H2" = "/global/home/users/sridharan/scratch/scripts/PGRTK/HGSVC_HPRC_FINAL_FINAL_FASTA_FILES/fastas_extracted/HG03874_hap2_CM089483.1_45294200_47197380.extracted.fasta"
+)
+
+alignment <- read_paf("~/Downloads/sliding_windows_bundle2_14_primates.paf") %>%
+  dplyr::select("qname", "qlen", "qstart", "qend", "strand", "tname", "tlen", "tstart", "tend", "nmatch", "alen", "mapq")
+alignment_1 <- read_paf("~/Downloads/sliding_windows_bundle2_humans.paf") %>%
+  dplyr::select("qname", "qlen", "qstart", "qend", "strand", "tname", "tlen", "tstart", "tend", "nmatch", "alen", "mapq")
+merged_alignment <- rbind(alignment, alignment_1)
+alignment <- merged_alignment
+  
+alignment[c("filepath", "qname")] <- do.call(rbind, strsplit(alignment$qname, " "))
+alignment$filepath <- gsub("(GorillaPR[0-9]+)_hap([12])", "\\1.hap\\2", alignment$filepath)
+alignment[c("sample", "filepath")] <- do.call(rbind, strsplit(alignment$filepath, "_"))
+alignment$window <- sub(".*_", "", alignment$tname)
+alignment$window <- sprintf("window%02d", as.integer(gsub("window", "", alignment$window)))
+alignment$sample[alignment$sample == "CM089673.1:46713933-48497812"] <- "H1D"
+alignment$sample[alignment$sample == "CM089483.1:45294200-47197380"] <- "H2"
+alignment$sample[alignment$sample == "chr17"] <- "chm13_H1"
+
+
+# Get the max alen rows for the three target samples
+top_three <- alignment %>%
+  filter(sample %in% c("chm13_H1", "H1D", "H2")) %>%
+  group_by(sample, window) %>%
+  slice_max(alen, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+# Get all the other samples (not the three)
+others <- alignment %>%
+  filter(!sample %in% c("chm13_H1", "H1D", "H2"))
+
+# Combine them
+alignment_filtered <- bind_rows(top_three, others)
+
+alignment <- alignment_filtered
+
+alignment <- alignment %>%
+  rowwise() %>%
+  mutate(genome_path = samples_dict[[sample]]) %>%
+  ungroup()
+
+# Select distinct rows and keep relevant columns
+alignment <- alignment %>%
+  dplyr::distinct(qname, qlen, qstart, qend, strand, tname, tlen, tstart, tend, nmatch, alen, mapq, sample, genome_path, window) %>%
+  dplyr::mutate(
+    start = if_else(strand == "-", qend, qstart),  # If X5 is "-", start is X4; otherwise, start is X3
+    end = if_else(strand == "-", qstart, qend)     # If X5 is "+", end is X3; otherwise, end is X4
+  ) %>%
+  dplyr::select(qname, qlen, qstart, qend, strand, tname, tlen, tstart, tend, nmatch, alen, mapq, sample, genome_path, window, start, end)
+
+# Filter for only mPanTro.hap1 and mPanTro.hap2
+alignment_panTro_bundle2 <- alignment %>%
+  filter(sample %in% c("mPanTro.hap1", "mPanTro.hap2")) %>%
+  mutate(bundle = "bundle2")
+
+# Define output file
+output_script <- "~/Documents/datasets/primate_sliding_window_pafs/extract_sequences_17samples_BUNDLE2.sh"
+
+# Start the bash script
+bash_script <- c("#!/bin/bash", "")
+
+# Process each group by X6
+alignment %>%
+  group_by(window) %>%
+  summarise(commands = list(paste0(
+    "seqkit faidx ", genome_path, " ", qname, ":", start, "-", end, 
+    " -o ", "windows/", window, "/", qname, "_", start, "_", end, ".fa"
+  ))) %>%
+  rowwise() %>%
+  mutate(script = list(c(
+    paste0("[ ! -d ", window, " ] && mkdir -p ", window),  # Create folder only if it doesn't exist
+    unlist(commands),        # Run seqkit commands
+    paste0("cat ", "windows/", window, "/*.fa > ", "windows/", window, "/", window, ".fa")
+  ))) %>%
+  pull(script) -> all_commands
+
+# Flatten the command list
+bash_script <- c(bash_script, unlist(all_commands))
+
+# Write to file
+writeLines(bash_script, output_script)
+
+# Make the script executable
+system(paste("chmod +x", output_script))
+
+cat("Bash script generated:", output_script, "\n")
+```
+
+```{r for 212 haps in all bundles 0 1 and 2}
+library(jsonlite)
+
+# Read each JSON file
+HGSVC_dictionary <- fromJSON("~/Downloads/HGSVC_samples_all.json")$SAMPLES
+HPRC_dictionary  <- fromJSON("~/Downloads/HPRC_samples_all.json")$SAMPLES
+
+# Create a tibble for each one
+HGSVC_df <- tibble(
+  sample = names(HGSVC_dictionary),
+  genome_path = unname(unlist(HGSVC_dictionary)),
+  dataset = "HGSVC"
+)
+
+HPRC_df <- tibble(
+  sample = names(HPRC_dictionary),
+  genome_path = unname(unlist(HPRC_dictionary)),
+  dataset = "HPRC"
+)
+
+genome_df <- bind_rows(HGSVC_df, HPRC_df)
+
+alignment <- read_paf("~/Documents/datasets/50kbwindows_3bundles.paf") %>%
+#alignment <- read_paf("~/Documents/datasets/50kb_windows_chimp_hap1_hap2_filtered.paf") %>%
+  dplyr::select("qname", "qlen", "qstart", "qend", "strand", "tname", "tlen", "tstart", "tend", "nmatch", "alen", "mapq") %>%
+  mutate(
+    sample = sub("^\\.\\/(.*?)\\/.*", "\\1", qname),
+    window = sub(".*_", "", tname),
+    target_region = sub("_sliding:.*", "", tname),
+    haplotype = sapply(strsplit(qname, " "), `[`, 2)
+  )
+
+alignment <- alignment %>%
+  mutate(bundle = case_when(
+    target_region == "chr17:46135002-46357410" ~ "bundle1",
+    target_region == "chr17:46488384-46953983" ~ "bundle0",
+    target_region == "chr17:47563641-47854154" ~ "bundle2",
+    TRUE ~ NA_character_
+  ))
+
+alignment <- alignment %>%
+  mutate(window = str_replace(window, "window([1-9])\\b", "window0\\1"))
+
+# Get the max alen rows for the three target samples
+top_three <- alignment %>%
+  group_by(sample, window, bundle) %>%
+  slice_max(alen, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+alignment <- top_three %>%
+  # filter(alen > 9000) %>%
+  # filter(alen < 15000) %>%
+  left_join(genome_df, by = "sample")
+
+# Select distinct rows and keep relevant columns
+alignment <- alignment %>%
+  dplyr::distinct(qname, qlen, qstart, qend, strand, tname, tlen, tstart, tend, nmatch, alen, mapq, sample, genome_path, window, bundle) %>%
+  dplyr::mutate(
+    start = if_else(strand == "-", qend, qstart),  # If X5 is "-", start is X4; otherwise, start is X3
+    end = if_else(strand == "-", qstart, qend)     # If X5 is "+", end is X3; otherwise, end is X4
+  ) %>%
+  dplyr::select(qname, qlen, qstart, qend, strand, tname, tlen, tstart, tend, nmatch, alen, mapq, sample, genome_path, window, start, end, bundle)
+
+# all_alignments <- dplyr::bind_rows(
+#   alignment,
+#   alignment_panTro_bundle0,
+#   alignment_panTro_bundle1,
+#   alignment_panTro_bundle2
+# )
+
+#alignment <- all_alignments
+
+alignment$qname <- sapply(strsplit(alignment$qname, " "), function(x) tail(x, 1))
+
+# Get the max alen rows for the three target samples
+alignment <- alignment %>%
+  group_by(sample, window, bundle) %>%
+  slice_max(alen, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+# Check for duplicate or missing rows
+check_rows <- alignment %>%
+  group_by(sample, window, bundle) %>%
+  tally(name = "n_rows") %>%
+  filter(n_rows != 1)
+
+# Define output file
+output_script <- "~/Documents/datasets/primate_sliding_window_pafs/extract_sequences_all_humans_50kb.sh"
+
+# Start the bash script
+bash_script <- c("#!/bin/bash", "")
+
+# Step 1: Create a list of any .gz files and prepare unzipping/indexing steps
+prep_commands <- alignment %>%
+  distinct(genome_path) %>%
+  filter(grepl("\\.gz$", genome_path)) %>%
+  mutate(
+    genome_basename = gsub("\\.gz$", "", basename(genome_path)),
+    temp_genome = paste0("./", genome_basename),
+    cp_cmd = paste0("cp ", genome_path, " ./"),
+    gunzip_cmd = paste0("gunzip -f ", basename(genome_path)),
+    index_cmd = paste0("seqkit faidx ./", genome_basename)
+  ) %>%
+  dplyr::select(cp_cmd, gunzip_cmd, index_cmd) %>%
+  unlist(use.names = FALSE)
+
+# Step 2: Generate main extraction commands
+all_commands <- alignment %>%
+  mutate(
+    genome_basename = gsub("\\.gz$", "", basename(genome_path)),
+    temp_genome = paste0("./", genome_basename)
+  ) %>%
+  group_by(window, bundle) %>%
+  summarise(commands = list(paste0(
+    "seqkit faidx ", temp_genome, " ", qname, ":", qstart, "-", qend,
+    " -o windows_bundle/", bundle, "/", window, "/", qname, "_", qstart, "_", qend, ".fa"
+  )), .groups = "drop") %>%
+  rowwise() %>%
+  mutate(script = list(c(
+    paste0("[ ! -d windows_bundle/", bundle, "/", window, " ] && mkdir -p windows_bundle/", bundle, "/", window),
+    unlist(commands),
+    paste0("cat windows_bundle/", bundle, "/", window, "/*.fa > windows_bundle/", bundle, "/", window, "/", window, ".fa")
+  ))) %>%
+  pull(script)
+ 
+# Make the script executable
+system(paste("chmod +x", output_script))
+
+cat("Bash script generated:", output_script, "\n")
+
+# Define output file
+output_script_no_gz <- "~/Documents/datasets/primate_sliding_window_pafs/extract_sequences_no_gz.sh"
+
+# Start the bash script
+bash_script_no_gz <- c("#!/bin/bash", "")
+
+# Step 1: Filter alignment to exclude .gz files
+alignment_no_gz <- alignment %>%
+  filter(!grepl("\\.gz$", genome_path))
+
+# Step 2: Prep indexing commands (files are already copied locally)
+prep_commands <- alignment_no_gz %>%
+  distinct(genome_path) %>%
+  mutate(
+    genome_basename = basename(genome_path),
+    index_cmd = paste0("seqkit faidx ", genome_basename)
+  ) %>%
+  pull(index_cmd)
+
+# Step 3: Generate extraction commands
+all_commands_no_gz <- alignment_no_gz %>%
+  mutate(
+    genome_basename = basename(genome_path),
+    output_path = paste0("windows_bundle/", bundle, "/", window, "/", haplotype, "_", start, "_", end, ".fa"),
+    mkdir_cmd = paste0("[ ! -d windows_bundle/", bundle, "/", window, " ] && mkdir -p windows_bundle/", bundle, "/", window),
+    faidx_cmd = paste0(
+      "[ ! -s ", output_path, " ] && seqkit faidx ", genome_basename, " ", haplotype, ":", start, "-", end,
+      " -o ", output_path
+    )
+  ) %>%
+  group_by(window, bundle) %>%
+  summarise(script = list(c(
+    unique(mkdir_cmd),
+    faidx_cmd,
+    paste0("cat windows_bundle/", bundle, "/", window, "/*.fa > windows_bundle/", bundle, "/", window, "/", window, ".fa")
+  )), .groups = "drop") %>%
+  pull(script)
+
+# Step 4: Combine and write to file
+bash_script_no_gz <- c(bash_script_no_gz, prep_commands, unlist(all_commands_no_gz))
+writeLines(bash_script_no_gz, output_script_no_gz)
+
+# Make the script executable
+system(paste("chmod +x", output_script_no_gz))
+
+cat("Bash script generated (indexing + extracting, no copying):", output_script_no_gz, "\n")
+```
+
+```{r}
+library(dplyr)
+
+# Define output file
+output_script <- "~/Documents/datasets/primate_sliding_window_pafs/extract_sequences_all_humans_50kb.sh"
+
+# Start the bash script
+bash_script <- c("#!/bin/bash", "")
+
+# Step 1: Point genomes to all_human_assemblies/
+alignment_fixed <- alignment %>%
+  mutate(
+    genome_basename = gsub("\\.gz$", "", basename(genome_path)),    # Remove .gz if present
+    temp_genome = paste0("all_human_assembies/", genome_basename)  # Correct genome path
+  )
+
+# Step 2: Generate extraction commands
+all_commands <- alignment_fixed %>%
+  group_by(bundle, window) %>%
+  summarise(commands = list(paste0(
+    "seqkit faidx ", .data$temp_genome, " ", .data$qname, ":", .data$start, "-", .data$end,
+    " -o windows_bundle_50kb/", .data$bundle, "/", .data$window, "/", .data$sample, ".fa"
+  )), .groups = "drop") %>%
+  rowwise() %>%
+  mutate(script = list(c(
+    paste0("[ ! -d windows_bundle_50kb/", bundle, "/", window, " ] && mkdir -p windows_bundle_50kb/", bundle, "/", window),
+    unlist(commands),
+    paste0("cat windows_bundle_50kb/", bundle, "/", window, "/*.fa > windows_bundle_50kb/", bundle, "/", window, "/", window, ".fa")
+  ))) %>%
+  pull(script)
+
+# Step 3: Combine and write bash script
+bash_script <- c(bash_script, unlist(all_commands))
+writeLines(bash_script, output_script)
+
+# Step 4: Make the script executable
+system(paste("chmod +x", output_script))
+
+cat("Bash script generated:", output_script, "\n")
+```
+
+```{r 50kb primates}
+# Define output file
+output_script <- "~/Documents/datasets/primate_sliding_window_pafs/extract_sequences_all_humans_50kb_primates.sh"
+
+# Start the bash script
+bash_script <- c("#!/bin/bash", "")
+
+# Step 1: Assign genome path based on haplotype
+alignment_fixed <- alignment %>%
+  mutate(
+    temp_genome = case_when(
+      grepl("chr19_hap1_hsa17", qname) ~ "mPanTro.hap1.fasta",
+      grepl("chr19_hap2_hsa17", qname) ~ "mPanTro.hap2.fasta",
+      TRUE ~ NA_character_
+    )
+  )
+
+# Step 2: Generate extraction commands
+all_commands <- alignment_fixed %>%
+  group_by(window, bundle) %>%
+  summarise(commands = list(paste0(
+    "seqkit faidx ", .data$temp_genome, " ", .data$qname, ":", .data$start, "-", .data$end,
+    " -o windows_bundle_50kb/", .data$bundle, "/", .data$window, "/", .data$sample, ".fa"
+  )), .groups = "drop") %>%
+  rowwise() %>%
+  mutate(script = list(c(
+    paste0("[ ! -d windows_bundle_50kb/", bundle, "/", window, " ] && mkdir -p windows_bundle_50kb/", bundle, "/", window),
+    unlist(commands),
+    paste0("cat windows_bundle_50kb/", bundle, "/", window, "/*.fa > windows_bundle_50kb/", bundle, "/", window, "/", window, ".fa")
+  ))) %>%
+  pull(script)
+
+# Step 3: Combine and write bash script
+bash_script <- c(bash_script, unlist(all_commands))
+writeLines(bash_script, output_script)
+
+# Step 4: Make the script executable
+system(paste("chmod +x", output_script))
+
+cat("Bash script generated:", output_script, "\n")
+```
+
+```{r}
+library(dplyr)
+library(stringr)
+
+# Step 1: Determine strand for each window
+alignment_with_strand <- alignment %>%
+  filter(window %in% c("window08", "window09")) %>%
+  mutate(
+    strand = ifelse(start > end, "reverse", "forward"),
+    window_num = as.integer(str_extract(window, "\\d+"))
+  )
+
+# Step 2: Merge per sample (bundle + qname + sample + genome_path)
+alignment_merged <- alignment_with_strand %>%
+  group_by(bundle, qname, sample, genome_path) %>%
+  summarise(
+    strand_consistent = all(strand == "reverse"),
+    window            = paste0("merged_", min(window_num), "_", max(window_num)),
+    merged_qstart     = if (all(strand == "reverse")) max(qstart, qend) else min(qstart, qend),
+    merged_qend       = if (all(strand == "reverse")) min(qstart, qend) else max(qstart, qend),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    strand           = ifelse(strand_consistent, "reverse", "forward"),  # assume forward if mixed
+    genome_basename  = gsub("\\.gz$", "", basename(genome_path)),
+    temp_genome      = paste0("./all_human_assembies/", genome_basename),
+    output_dir       = paste0("windows_bundle/", bundle, "/", window),
+    output_file      = paste0(output_dir, "/", qname, "_", merged_qstart, "_", merged_qend, ".fa"),
+    faidx_command    = paste0(
+      "seqkit faidx ", temp_genome, " ", qname, ":", merged_qstart, "-", merged_qend,
+      " -o ", output_file
+    ),
+    mkdir_command    = paste0("[ ! -d ", output_dir, " ] && mkdir -p ", output_dir)
+  )
+
+# Step 3: One combined list of all commands
+all_script_lines <- c(
+  unique(alignment_merged$mkdir_command),
+  alignment_merged$faidx_command,
+  alignment_merged %>%
+    distinct(bundle, window, output_dir, window) %>%
+    mutate(cat_cmd = paste0("cat ", output_dir, "/*.fa > ", output_dir, "/", window, ".fa")) %>%
+    pull(cat_cmd)
+)
+
+#writeLines(all_script_lines, "~/Documents/datasets/extract_merged_window08_window09.sh")
+
+```
+
+
