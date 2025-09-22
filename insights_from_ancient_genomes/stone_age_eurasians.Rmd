@@ -1,0 +1,1797 @@
+---
+title: "Stone Age Eurasians"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(ggh4x)
+library(ggbreak)
+library(zoo)
+```
+
+```{r histogram and timeline plot}
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+
+# Read the dataset
+ancient_17q_blocks_merged_Feb2022_final <- read.delim("~/Documents/datasets/ancient_17q_blocks_merged_Feb2022_final.tsv")
+
+# Convert the 'Age..BP.' column to numeric
+ancient_17q_blocks_merged_Feb2022_final$`Age..BP.` <- as.numeric(as.character(ancient_17q_blocks_merged_Feb2022_final$`Age..BP.`))
+
+# Multiply the values by -1
+ancient_17q_blocks_merged_Feb2022_final$`Age..BP.` <- ancient_17q_blocks_merged_Feb2022_final$`Age..BP.` * -1
+
+# Filter the data
+all_ancient_data <- ancient_17q_blocks_merged_Feb2022_final %>% 
+  filter(H1D >= 0 & H2D >= 0) # filters out individuals that have high variance: 1674 individuals to 986 individuals
+
+age_bp <- all_ancient_data %>% 
+  filter((`Age..BP.`!= 'UNKNOWN')) %>% 
+  filter(`Population`!= 'UNKNOWN') %>% 
+  filter(`Population`!= 'Africa') %>% 
+  filter(`Population`!= 'Admixed') %>% 
+  filter(`Population`!= 'Americas') %>% 
+  filter(`Population`!= 'Asia') # total of 644 individuals
+
+age_bp <- age_bp %>%
+  mutate(Age..BP. = as.numeric(Age..BP.))
+
+#first, assign sectors. Possible naming conventions are where it's clustered? Sector 2_2, Sector 2_3, Sector 2_4 etc
+#the margins should probably be +/- 0.5
+
+age_bp <- age_bp %>%
+  dplyr::mutate(sector = 
+           dplyr::case_when(
+             (H1.Avg.CN >= 1.5 & H1.Avg.CN <= 2.5 & H2.Avg.CN >= 1.5 & H2.Avg.CN <= 2.5) ~ "2_2",
+             (H1.Avg.CN >= 1.5 & H1.Avg.CN <= 2.5 & H2.Avg.CN >= 2.5 & H2.Avg.CN <= 3.5) ~ "2_3",
+             (H1.Avg.CN >= 1.5 & H1.Avg.CN <= 2.5 & H2.Avg.CN >= 3.5 & H2.Avg.CN <= 4.5) ~ "2_4",
+             (H1.Avg.CN >= 2.5 & H1.Avg.CN <= 3.5 & H2.Avg.CN >= 2.5 & H2.Avg.CN <= 3.5) ~ "3_3",
+             (H1.Avg.CN >= 2.5 & H1.Avg.CN <= 3.5 & H2.Avg.CN >= 3.5 & H2.Avg.CN <= 4.5) ~ "3_4",
+             (H1.Avg.CN >= 3.5 & H1.Avg.CN <= 4.5 & H2.Avg.CN >= 3.5 & H2.Avg.CN <= 4.5) ~ "4_4",
+             (H1.Avg.CN >= 3.5 & H1.Avg.CN <= 4.5 & H2.Avg.CN >= 4.5 & H2.Avg.CN <= 5.5) ~ "4_5",
+             (H1.Avg.CN >= 4.5 & H1.Avg.CN <= 5.5 & H2.Avg.CN >= 4.5 & H2.Avg.CN <= 5.5) ~ "5_5",
+           ))
+
+#second, reconcile inversion status and duplication status (use matrix developed at the last lab meeting)
+age_bp <- age_bp %>%
+  mutate(complex_genotype =
+           dplyr::case_when(
+             (Inversion == "H1H1" & sector == "2_2") ~ "H1/H1",
+             (Inversion == "H1H2" & sector == "2_2") ~ "H1/H2",
+             (Inversion == "H2H2" & sector == "2_2") ~ "H2/H2",
+             
+             (Inversion == "H1H1" & sector == "3_3") ~ "H1/H1D",
+             (Inversion == "H1H1" & sector == "4_4") ~ "H1D/H1D", #note this could also be H1/H1DD 
+             (Inversion == "H1H1" & sector == "5_5") ~ "H1D/H1DD", #note this could also be H1/H1DDD
+             
+             (Inversion == "H1H2" & sector == "2_3") ~ "H1/H2D",
+             (Inversion == "H1H2" & sector == "3_3") ~ "H1D/H2",
+             (Inversion == "H1H2" & sector == "3_4") ~ "H1D/H2D",
+             (Inversion == "H1H2" & sector == "4_4") ~ "H1DD/H2",
+             (Inversion == "H1H2" & sector == "4_5") ~ "H1DD/H2D",
+             (Inversion == "H1H2" & sector == "5_3") ~ "H1DDD/H2",
+             
+             (Inversion == "H2H2" & sector == "2_3") ~ "H2/H2D",
+             (Inversion == "H2H2" & sector == "2_4") ~ "H2D/H2D"
+           )) %>%
+  tidyr::drop_na(complex_genotype) # total of 626 individuals
+
+# adding in the different haplotypes (hap1 and hap2) - this will help with the world map
+age_bp <- age_bp %>%
+  mutate(hap1 = 
+           case_when(
+             (complex_genotype == "H1/H1") ~ "H1",
+             (complex_genotype == "H1/H1D") ~ "H1",
+             (complex_genotype == "H1/H2") ~ "H1",
+             (complex_genotype == "H1/H2D") ~ "H1",
+             (complex_genotype == "H1D/H1D") ~ "H1D",
+             (complex_genotype == "H1D/H1DD") ~ "H1D",
+             (complex_genotype == "H1D/H2") ~ "H1D",
+             (complex_genotype == "H1D/H2D") ~ "H1D",
+             (complex_genotype == "H1DD/H2D") ~ "H1DD",
+             (complex_genotype == "H2/H2") ~ "H2",
+             (complex_genotype == "H2/H2D") ~ "H2",
+             (complex_genotype == "H2D/H2D") ~ "H2D"
+           ))
+
+age_bp <- age_bp %>%
+  mutate(hap2 = 
+           case_when(
+             (complex_genotype == "H1/H1") ~ "H1",
+             (complex_genotype == "H1/H1D") ~ "H1D",
+             (complex_genotype == "H1/H2") ~ "H2",
+             (complex_genotype == "H1/H2D") ~ "H2D",
+             (complex_genotype == "H1D/H1D") ~ "H1D",
+             (complex_genotype == "H1D/H1DD") ~ "H1DD",
+             (complex_genotype == "H1D/H2") ~ "H2",
+             (complex_genotype == "H1D/H2D") ~ "H2D",
+             (complex_genotype == "H1DD/H2D") ~ "H2D",
+             (complex_genotype == "H2/H2") ~ "H2",
+             (complex_genotype == "H2/H2D") ~ "H2D",
+             (complex_genotype == "H2D/H2D") ~ "H2D"
+           ))
+
+age_bp_final <- age_bp %>%
+  mutate(time_block = cut(
+    Age..BP.,
+    breaks = seq(min(Age..BP., na.rm = TRUE), max(Age..BP., na.rm = TRUE) + 500, by = 500),
+    labels = paste(seq(min(Age..BP., na.rm = TRUE), max(Age..BP., na.rm = TRUE), by = 500),
+                   seq(min(Age..BP., na.rm = TRUE) + 500, max(Age..BP., na.rm = TRUE) + 500, by = 500), sep = "_"),
+    right = FALSE
+  )) %>%
+  mutate(time_midpoint = -1 * (-1 * (as.numeric(sub("_.*", "", time_block)) + 
+                                     as.numeric(sub(".*_", "", time_block))) / 2))
+
+# Tally counts of hap1 by population and time_block
+hap1_counts <- age_bp_final %>%
+  group_by(Population, time_block, hap1) %>%
+  summarize(count = n(), .groups = 'drop')
+
+# Tally counts of hap2 by population and time_block
+hap2_counts <- age_bp_final %>%
+  group_by(Population, time_block, hap2) %>%
+  summarize(count = n(), .groups = 'drop')
+
+# Combine hap1 and hap2 counts into one dataframe by population
+hap_counts_by_POP <- age_bp_final %>%
+  tidyr::pivot_longer(cols = c(hap1, hap2), names_to = "haplotype_type", values_to = "haplotype") %>%
+  group_by(Population, time_block, time_midpoint, haplotype) %>%
+  summarize(count = n(), .groups = 'drop')
+
+# Combine hap1 and hap2 counts into one dataframe without population
+hap_counts_NO_POP <- age_bp_final %>%
+  tidyr::pivot_longer(cols = c(hap1, hap2), names_to = "haplotype_type", values_to = "haplotype") %>%
+  group_by(time_block, time_midpoint, haplotype) %>%
+  mutate(haplotype = ifelse(haplotype == "H1DD", "H1D", haplotype)) %>%
+  summarize(count = n(), .groups = 'drop')
+
+hap_counts_NO_POP <- hap_counts_NO_POP %>%
+  tidyr::complete(time_midpoint, haplotype, fill = list(count = 0)) 
+
+# Assuming your dataframe is named df
+hap_counts_NO_POP <- hap_counts_NO_POP %>%
+  group_by(time_midpoint) %>%
+  mutate(total_count = sum(count)) %>%  
+  ungroup() %>%
+  mutate(frequency = count / total_count) %>%
+  dplyr::select(time_midpoint, haplotype, count, total_count, frequency)
+
+# Create the present-day data
+present_day_data <- data.frame(
+  time_midpoint = 0,  # Use the same column name as in your dataframe
+  haplotype = c("H1", "H1D", "H2", "H2D"),
+  count = c(794, 274, 32, 296),  # Present-day counts
+  total_count = sum(c(794, 274, 32, 296)),  # Total sample size for present day
+  frequency = c(0.5663338088, 0.1954350927, 0.0228245364, 0.2111269615)
+)
+
+# Add present-day data to the existing dataframe
+hap_counts_NO_POP <- bind_rows(hap_counts_NO_POP, present_day_data)
+```
+
+```{r}
+# Create the first plot (histogram)
+p1 <- ggplot(age_bp, aes(x = as.numeric(`Age..BP.`), fill = Population)) +
+  geom_histogram(position = "dodge", binwidth = 500) +
+  theme_minimal() +
+  labs(x = "", y = "count") +
+  scale_fill_manual(values = c("#00496F", "#E25B16", "#ED9106", "#C4C856")) +
+  facet_wrap(~Population, scales = 'free_y', ncol = 1) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 5), labels = scales::number_format(accuracy = 1))
+
+# Calculate the time ranges for each population
+time_ranges <- age_bp %>%
+  group_by(Population) %>%
+  summarize(
+    min_time = min(as.numeric(`Age..BP.`), na.rm = TRUE),
+    max_time = max(as.numeric(`Age..BP.`), na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+# Set the desired order for the populations
+desired_order <- c("Early Farmer", "Hunter-Gatherer (E)", "Hunter-Gatherer (W)", "Yamnaya")
+
+# Ensure the Population factor levels are in the correct order
+age_bp <- age_bp %>% mutate(Population = factor(Population, levels = desired_order))
+time_ranges <- time_ranges %>% mutate(Population = factor(Population, levels = desired_order))
+
+# Create the second plot (timeline)
+p2 <- ggplot(time_ranges, aes(x = Population, y = min_time/1000, yend = max_time/1000, color = Population)) +
+  geom_segment(aes(xend = Population), size = 4) +
+  coord_flip() +
+  labs(x = "population", y = "age (BP)") +
+  scale_color_manual(values = c("#00496F", "#E25B16", "#ED9106", "#C4C856")) +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 10),
+        axis.ticks.y = element_blank(),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank())
+
+# Combine the histogram (p1) and the time range plot (p2) with proper alignment
+final_plot <- cowplot::plot_grid(p1, p2, ncol = 1, align = "v", rel_heights = c(3, 0.5))
+
+# Save the combined plot as a PDF
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/histogram_of_ancient_counts_with_timeline.pdf", plot = final_plot, width = 11, height = 8.5)
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/histogram_of_ancient_counts.pdf", plot = p1, width = 11, height = 8.5)
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/timeline.pdf", plot = p2, width = 11, height = 2)
+
+```
+
+```{r}
+# Define the custom colors
+custom_colors <- c("#00496F", "#16879D", "#e27602", "#ee9f27")
+names(custom_colors) <- c("H1", "H1D", "H2", "H2D")
+
+p3 <- ggplot(hap_counts_NO_POP, aes(x = time_midpoint, y = frequency, color = haplotype, group = haplotype)) +
+  geom_line(alpha = 0.6) +
+  geom_point(aes(size = sqrt(total_count), color = haplotype)) +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "age (BP)", y = "frequency", color = "Haplotype") +
+  theme_minimal() +
+  scale_x_break(c(-25000, -14000), scales = 12) + # Add a break in the x-axis
+  scale_x_continuous(
+    breaks = c(-25750, -14000, -13000, -12000, -11000, -10000, -9000, -8000, -7000, -6000, -5000, -4000, -3000, -2000, -1000, 0),
+    labels = c("-25750", "-14000", "-13000","-12000", "-11000", "-10000", "-9000", "-8000", "-7000", "-6000", "-5000", "-4000", "-3000", "-2000", "-1000", "0")
+  ) +
+  theme(axis.text.x = element_text(angle = 0, hjust = 1))
+
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/timeline_of_haplotype_frequencies_stone_age_eurasia.pdf", plot = p3, width = 11, height = 8.5)
+
+# Create a weighted moving average function (you can adjust the weights as necessary)
+weighted_ma <- function(x, n = 7) {
+  weights <- seq_len(n) / sum(seq_len(n))
+  rollapply(x, width = n, FUN = function(y) sum(weights * y), fill = NA, align = "right")
+}
+
+# Apply the weighted moving average to the 'frequency' column in your dataframe
+hap_counts_NO_POP$frequency_ma <- ave(hap_counts_NO_POP$frequency, hap_counts_NO_POP$haplotype,
+                                      FUN = function(x) weighted_ma(x, n = 7))
+
+# Now plot your data including the moving average
+p3_2 <- ggplot(hap_counts_NO_POP, aes(x = time_midpoint, y = frequency, color = haplotype, group = haplotype)) +
+  #geom_line(alpha = 0.6) +
+  geom_point(aes(size = sqrt(total_count), color = haplotype), alpha = 0.5) +
+  geom_line(aes(y = frequency_ma, linetype = "Weighted MA"), size = 1) + # Add the moving average line
+  scale_color_manual(values = custom_colors) +
+  labs(x = "age (BP)", y = "frequency", color = "Haplotype", linetype = "Line Type") +
+  theme_minimal() +
+  scale_x_break(c(-25000, -14000), scales = 12) + # Add a break in the x-axis
+  scale_x_continuous(
+    breaks = c(-25750, -14000, -13000, -12000, -11000, -10000, -9000, -8000, -7000, -6000, -5000, -4000, -3000, -2000, -1000, 0),
+    labels = c("-25750", "-14000", "-13000","-12000", "-11000", "-10000", "-9000", "-8000", "-7000", "-6000", "-5000", "-4000", "-3000", "-2000", "-1000", "0")
+  ) +
+  theme(axis.text.x = element_text(angle = 0, hjust = 1))
+
+print(p3_2)
+```
+
+```{r FINAL PLOT OF MULTINOMIAL LOGISTIC REGRESSION}
+library(effects)
+library(nnet)
+library(epiDisplay)
+library(janitor)
+
+age_bp_final <- age_bp_final %>% clean_names()
+
+multinom_reg <- age_bp_final %>% 
+  pivot_longer(cols = c("hap1", "hap2"), values_to = "haplotype", names_to = "tmp") %>%
+  mutate(haplotype = ifelse(haplotype == "H1DD", "H1D", haplotype))
+
+m = nnet::multinom(haplotype~frequency, data = age_bp_final)
+z = summary(m)$coefficients/summary(m)$standard.errors
+p = (1 - pnorm(abs(z), 0, 1)) * 2
+
+# multinom_reg <- age_bp_final %>% 
+#   pivot_longer(cols = c("hap1", "hap2"), values_to = "haplotype", names_to = "tmp") %>%
+#   mutate(haplotype = ifelse(haplotype == "H1DD", "H1D", haplotype))
+# 
+# m = nnet::multinom(haplotype~age, data = multinom_reg)
+# z = summary(m)$coefficients/summary(m)$standard.errors
+# p = (1 - pnorm(abs(z), 0, 1)) * 2
+
+breaks = seq(-25700,0,100)
+
+dmodel = data.frame(hap_names = rep(unique(multinom_reg$haplotype),each=length(breaks)),age=rep(breaks,4))
+pp.model = cbind(dmodel %>% dplyr::select(age),predict(m, newdata=dmodel, type="probs", se=TRUE))
+
+plot_df = pp.model %>% 
+          pivot_longer(-c(age),names_to="haplotype",values_to="freq")
+
+# Define the custom colors
+custom_colors <- c("#00496F", "#16879D", "#e27602", "#ee9f27")
+names(custom_colors) <- c("H1", "H1D", "H2", "H2D")
+
+lr <- ggplot(data = plot_df, aes(x = age/1000, y = freq, color = haplotype)) +
+  geom_line(size = 1.2) +
+  #geom_point(data = hap_counts_NO_POP, aes(x = time_midpoint, y = frequency, color = haplotype, size = sqrt(total_count)), alpha = 0.2) + 
+  scale_color_manual(values = custom_colors) +
+  theme_minimal() +
+  xlab("kyr BP") +
+  ylab("frequency")
+
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/timeline_of_haplotype_frequencies_stone_age_eurasia_LR.pdf", plot = lr, width = 8.5, height = 4)
+
+```
+
+```{r Final plot D and not D}
+library(effects)
+library(nnet)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Clean column names
+age_bp_final <- age_bp_final %>% clean_names()
+
+# Prepare the binomial dataset
+binomial <- age_bp_final %>% 
+  pivot_longer(cols = c("hap1", "hap2"), values_to = "haplotype", names_to = "tmp") %>%
+  mutate(haplotype = ifelse(haplotype == "H1DD", "H1D", haplotype))
+
+# Assign duplication status based on haplotype
+binomial <- binomial %>% 
+  mutate(duplication_status = case_when(
+    haplotype == 'H1D' ~ 'H1D',
+    haplotype == 'H2D' ~ 'H2D', 
+    haplotype == 'H1' ~ 'H1', 
+    haplotype == 'H2' ~ 'H2', 
+    TRUE ~ as.character(haplotype)
+  ))
+
+# Fit the multinomial logistic regression model
+m = nnet::multinom(duplication_status ~ age_bp, data = binomial)
+
+# Calculate z-scores and p-values
+z = summary(m)$coefficients / summary(m)$standard.errors
+p = (1 - pnorm(abs(z), 0, 1)) * 2
+
+# Define age_bp breaks
+#breaks = seq(-25700, 0, 100)
+breaks = seq(-11000, 0, 100)
+
+
+# Create a data frame for predictions
+dmodel = data.frame(duplication_status = rep(c("H1", "H2", "H1D", "H1D"), each = length(breaks)), age_bp = rep(breaks, 4))
+
+# Predict probabilities for each duplication status
+pp.model = cbind(dmodel %>% dplyr::select(age_bp), predict(m, newdata = dmodel, type = "probs"))
+
+# Pivot the predictions into long format
+plot_df = pp.model %>% 
+  pivot_longer(-age_bp, names_to = "haplotype", values_to = "freq")
+  #mutate(duplication_status = "Y") %>%
+  #mutate(duplication_status_comp = 1-freq)
+
+# plot_df_2 <- plot_df %>% dplyr::select(age_bp, duplication_status_comp) %>%
+#   dplyr::mutate(duplication_status = "N") %>%
+#   dplyr::rename(freq = duplication_status_comp)
+# 
+# plot_df <- plot_df %>% dplyr::select(-duplication_status_comp)
+# 
+# new_df = rbind(plot_df, plot_df_2)
+# 
+# plot_df <- new_df
+
+# Define the custom colors
+custom_colors <- c("#00496F", "#16879D", "#e27602", "#ee9f27")
+names(custom_colors) <- c("H1", "H1D", "H2", "H2D")
+
+# Plot the predicted probabilities for both "Y" and "N"
+lr <- ggplot(data = plot_df, aes(x = age_bp, y = freq, color = haplotype)) +
+  geom_line(size = 1.2) +
+  scale_color_manual(values = custom_colors) +
+  theme_minimal() +
+  xlab("age (bp)") +
+  ylab("frequency") +
+  theme(legend.position = "none")
+
+
+# Save the plot
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/timeline_of_haplotype_frequencies_stone_age_eurasia_LR_DUP_YN.pdf", plot = lr, width = 8.5, height = 4)
+```
+
+```{r}
+library(effects)
+library(nnet)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Clean column names
+age_bp_final <- age_bp_final %>% clean_names()
+
+# Prepare the binomial dataset
+binomial <- age_bp_final %>% 
+  pivot_longer(cols = c("hap1", "hap2"), values_to = "haplotype", names_to = "tmp") %>%
+  mutate(haplotype = ifelse(haplotype == "H1DD", "H1D", haplotype))
+
+# Assign duplication status based on haplotype
+binomial <- binomial %>% 
+  mutate(duplication_status = case_when(
+    haplotype == 'H1D' ~ 'Y',
+    haplotype == 'H2D' ~ 'Y', 
+    haplotype == 'H1' ~ 'N', 
+    haplotype == 'H2' ~ 'N', 
+    TRUE ~ as.character(haplotype)
+  ))
+
+# Fit the multinomial logistic regression model
+m = nnet::multinom(duplication_status ~ age_bp, data = binomial)
+
+# Calculate z-scores and p-values
+z = summary(m)$coefficients / summary(m)$standard.errors
+p = (1 - pnorm(abs(z), 0, 1)) * 2
+
+# Define age_bp breaks
+breaks = seq(-25700, 0, 100)
+
+# Create a data frame for predictions
+dmodel = data.frame(duplication_status = rep(c("Y", "N"), each = length(breaks)), age_bp = rep(breaks, 2))
+
+# Predict probabilities for each duplication status
+pp.model = cbind(dmodel %>% dplyr::select(age_bp), predict(m, newdata = dmodel, type = "probs"))
+
+# Pivot the predictions into long format
+plot_df = pp.model %>% 
+  pivot_longer(-age_bp, names_to = "duplication_status", values_to = "freq")
+
+# Define the custom colors
+custom_colors <- c("#00496F", "#16879D")
+names(custom_colors) <- c("Y", "N")
+
+# Plot the predicted probabilities for both "Y" and "N"
+lr <- ggplot(data = plot_df, aes(x = age_bp, y = freq, color = duplication_status)) +
+  geom_line(size = 1.2) +
+  scale_color_manual(values = custom_colors) +
+  theme_minimal() +
+  xlab("Age (BP)") +
+  ylab("Probability") +
+  ggtitle("Predicted Probabilities of Duplication Status Over Time")
+
+# Save the plot
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/timeline_of_haplotype_frequencies_stone_age_eurasia_LR_DUP_YN.pdf", plot = lr, width = 8.5, height = 4)
+```
+
+```{r}
+library(MCMCpack)
+# Simulating example data
+set.seed(123)
+time <- 1:100  # Time variable
+# Simulating choices based on time (for simplicity)
+choices <- sample(1:4, 100, replace = TRUE, prob = c(0.25, 0.25, 0.25, 0.25))
+# Creating a data frame
+data <- data.frame(choice = factor(choices), time = time)
+View(data)
+
+model <- mnp(choice ~ time, data = data, n.draws = 1000, burnin = 200, thin = 10)
+```
+
+
+```{r}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+# Importing datasets
+KANSL1_17q21_ancient__3500.BP_invdup_table <- read.csv("~/Documents/datasets/reextendeddatafigure11cmarkdownfile/KANSL1_17q21_ancient__3500 BP_invdup_table.csv")
+KANSL1_17q21_ancient_4700.3500.BP_invdup_table <- read.csv("~/Documents/datasets/reextendeddatafigure11cmarkdownfile/KANSL1_17q21_ancient_4700-3500 BP_invdup_table.csv")
+KANSL1_17q21_ancient_6000.4700.BP_invdup_table <- read.csv("~/Documents/datasets/reextendeddatafigure11cmarkdownfile/KANSL1_17q21_ancient_6000-4700 BP_invdup_table.csv")
+KANSL1_17q21_ancient_8000.6000.BP_invdup_table <- read.csv("~/Documents/datasets/reextendeddatafigure11cmarkdownfile/KANSL1_17q21_ancient_8000-6000 BP_invdup_table.csv")
+KANSL1_17q21_ancient__8000.BP_invdup_table <- read.csv("~/Documents/datasets/reextendeddatafigure11cmarkdownfile/KANSL1_17q21_ancient__8000 BP_invdup_table.csv")
+
+# Add a new column to each dataframe indicating the dataset source
+KANSL1_17q21_ancient__3500.BP_invdup_table$dataset <- "3500bp"
+KANSL1_17q21_ancient_4700.3500.BP_invdup_table$dataset <- "4700_3500bp"
+KANSL1_17q21_ancient_6000.4700.BP_invdup_table$dataset <- "6000_4700bp"
+KANSL1_17q21_ancient_8000.6000.BP_invdup_table$dataset <- "8000_6000bp"
+KANSL1_17q21_ancient__8000.BP_invdup_table$dataset <- "8000bp"
+
+# Add a new column to each dataframe indicating the dataset source
+KANSL1_17q21_ancient__3500.BP_invdup_table$time <- -3500
+KANSL1_17q21_ancient_4700.3500.BP_invdup_table$time <- -4100
+KANSL1_17q21_ancient_6000.4700.BP_invdup_table$time <- -5350
+KANSL1_17q21_ancient_8000.6000.BP_invdup_table$time <- -7000
+KANSL1_17q21_ancient__8000.BP_invdup_table$time <- -8000
+
+
+# Merge all dataframes into one
+KANSL1_17q21_combined_invdup_table <- rbind(
+  KANSL1_17q21_ancient__3500.BP_invdup_table,
+  KANSL1_17q21_ancient_4700.3500.BP_invdup_table,
+  KANSL1_17q21_ancient_6000.4700.BP_invdup_table,
+  KANSL1_17q21_ancient_8000.6000.BP_invdup_table,
+  KANSL1_17q21_ancient__8000.BP_invdup_table
+)
+
+View(KANSL1_17q21_combined_invdup_table)
+
+# Load your dataset (replace 'your_dataframe' with your actual dataframe)
+df <- KANSL1_17q21_combined_invdup_table
+
+# Assuming df is already loaded with your combined dataset
+# Reshape the dataframe to long format
+df_long <- df %>%
+  pivot_longer(
+    cols = c("H1_NoDup", "H1_Dup", "H2_NoDup", "H2_Dup"),
+    names_to = "haplotype",
+    values_to = "count"
+  )
+
+# Calculate the proportion for each haplotype
+df_long <- df_long %>%
+  group_by(time, population) %>%
+  mutate(proportion = count / sum(count)) %>%
+  ungroup()
+
+df_long$haplotype <- recode(df_long$haplotype, 
+                            "H1_NoDup" = "H1", 
+                            "H1_Dup" = "H1D",
+                            "H2_NoDup" = "H2",
+                            "H2_Dup" = "H2D")
+
+# Set the desired order for the populations
+desired_order <- c("Early Farmer", "Hunter-Gatherer (E)", "Hunter-Gatherer (W)", "Yamnaya")
+
+p <- ggplot(df_long, aes(x = time, y = proportion, group = interaction(population, haplotype), color = population)) +
+  # Line plot: Connect points over time for each haplotype and population
+  geom_line(size = 0.5, alpha = 0.7) +
+  # Point plot: Size by sample size (N), color by population
+  geom_point(aes(size = sqrt(samples))) +
+  facet_wrap(~haplotype, ncol = 1, scales = "free_y") +
+  scale_color_manual(values = c("#00496F", "#E25B16", "#ED9106", "#C4C856"), name = "population") +  # Use a distinct color palette for populations
+  labs(
+    x = "age (BP)",
+    y = "frequency"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 1),
+    strip.text = element_text(size = 12),
+    legend.position = "right"
+  )
+
+
+# Display the plot
+print(p)
+
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/timeline_of_haplotype_frequencies_stone_age_eurasia_by_population.pdf", plot = p, width = 11, height = 8.5)
+```
+
+```{r Plotting samples}
+library(tidyverse)
+library(cowplot)   # for theme_minimal_grid()
+library(sf)        # for manipulation of simple features objects
+library(rworldmap) # for getMap()
+library(scatterpie)
+library(ggrepel)
+library(ggforce)
+library(remotes)
+library(rnaturalearth)
+library(sp)
+library(ztable)
+library(PNWColors)
+
+age_bp_new_lat_long <- age_bp %>% 
+  filter((`Age..BP.`!= 'UNKNOWN')) %>% 
+  filter(`Population`!= 'UNKNOWN') %>% 
+  filter(`Population`!= 'Africa') %>% 
+  filter(`Population`!= 'Admixed') %>% 
+  filter(`Population`!= 'Americas') %>% 
+  filter(`Population`!= 'Asia') # total of 644 individuals
+
+world_sf <- st_as_sf(getMap(resolution = "li"))
+
+# projection outline in long-lat coordinates
+lats <- c(
+  90:-90, # right side down
+  -90:0, 0:-90, # third cut bottom
+  -90:0, 0:-90, # second cut bottom
+  -90:0, 0:-90, # first cut bottom
+  -90:90, # left side up
+  90:0, 0:90, # cut top
+  90 # close
+)
+longs <- c(
+  rep(180, 181), # right side down
+  rep(c(80.01, 79.99), each = 91), # third cut bottom
+  rep(c(-19.99, -20.01), each = 91), # second cut bottom
+  rep(c(-99.99, -100.01), each = 91), # first cut bottom
+  rep(-180, 181), # left side up
+  rep(c(-40.01, -39.99), each = 91), # cut top
+  180 # close
+)
+
+goode_outline <- 
+  list(cbind(longs, lats)) %>%
+  st_polygon() %>%
+  st_sfc(
+    crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+  )
+
+# now we need to work in transformed coordinates, not in long-lat coordinates
+crs_goode <- "+proj=igh"
+goode_outline <- st_transform(goode_outline, crs = crs_goode)
+
+# get the bounding box in transformed coordinates and expand by 10%
+xlim <- st_bbox(goode_outline)[c("xmin", "xmax")]*1.1
+ylim <- st_bbox(goode_outline)[c("ymin", "ymax")]*1.1
+
+# turn into enclosing rectangle
+goode_encl_rect <- 
+  list(
+    cbind(
+      c(xlim[1], xlim[2], xlim[2], xlim[1], xlim[1]), 
+      c(ylim[1], ylim[1], ylim[2], ylim[2], ylim[1])
+    )
+  ) %>%
+  st_polygon() %>%
+  st_sfc(crs = crs_goode)
+
+# calculate the area outside the earth outline as the difference
+# between the enclosing rectangle and the earth outline
+goode_without <- st_difference(goode_encl_rect, goode_outline)
+
+CNV_points_sf <- age_bp_new_lat_long %>%
+  mutate(original_longitude = Longitude, original_latitude = Latitude) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+
+CNV_points_sf_t <- st_transform(CNV_points_sf, crs=crs_goode) %>% 
+  as_tibble() %>%
+  mutate(long = geometry %>% st_coordinates() %>% .[,"X"], 
+         lat = geometry %>% st_coordinates() %>% .[,"Y"], 
+         Longitude = original_longitude, 
+         Latitude = original_latitude)
+
+scaled_data = CNV_points_sf_t
+
+scaled_data <- scaled_data %>% select(-Longitude, -Latitude)
+
+scaled_data <- scaled_data %>%
+  mutate(
+    original_longitude = as.numeric(original_longitude),
+    original_latitude = as.numeric(original_latitude)
+  )
+
+
+# Define your custom colors with named populations
+custom_colors <- c(
+  "Early Farmer" = "#00496F",
+  "Yamnaya" = "#C4C856",
+  "Hunter-Gatherer (W)" = "#ED9106",
+  "Hunter-Gatherer (E)" = "#dd4124"
+)
+
+# Calculate the range of your data points
+long_range <- range(scaled_data$long)
+lat_range <- range(scaled_data$lat)
+
+g <- ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85", color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_jitter(mapping = aes(x = long, y = lat, color = Population, group = Population),
+              data = scaled_data,
+              width = 0.75,  # Adjust width for jittering along the x-axis
+              height = 0.75  # Adjust height for jittering along the y-axis
+             ) +
+  coord_sf(crs = crs_goode, xlim = long_range, ylim = lat_range, default_crs = crs_goode) +
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank()) +
+  theme(axis.title.y = element_blank()) +
+  scale_color_manual(values = custom_colors) 
+
+g
+
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/plot_of_all_sample_locations.pdf", plot = g, width = 11, height = 4.25)
+
+super_old_threshold <- min(scaled_data$`Age..BP.`) 
+
+# Create a new column for color
+scaled_data <- scaled_data %>%
+  mutate(color_group = ifelse(`Age..BP.` == super_old_threshold, "Oldest", "Rest"))
+
+# Separate the oldest sample and the rest
+oldest_sample <- scaled_data %>% filter(color_group == "Oldest")
+rest_samples <- scaled_data %>% filter(color_group != "Oldest")
+
+g1 <- ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85", color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  # Plot the rest of the samples with the gradient
+  geom_jitter(mapping = aes(x = long, y = lat, color = `Age..BP.`, group = Population),
+              data = rest_samples,
+              width = 0.75,
+              height = 0.75
+             ) +
+  # Plot the oldest sample in black
+  geom_jitter(mapping = aes(x = long, y = lat),
+              data = oldest_sample,
+              color = "black",
+              width = 0.75,
+              height = 0.75
+             ) +
+  coord_sf(crs = crs_goode, xlim = long_range, ylim = lat_range, default_crs = crs_goode) +
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank()) +
+  theme(axis.title.y = element_blank()) +
+  scale_color_gradient(low = "#00496F", high = "#C4C856", guide = guide_colorbar(title = "age (bp)"))
+
+g1
+
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/plot_of_all_sample_ages.pdf", plot = g1, width = 11, height = 4.25)
+
+rest_samples_10k <- rest_samples %>%
+  filter(`Age..BP.` > -10001) %>%
+  mutate(age_bracket = factor(case_when(
+    `Age..BP.` >= -10000 & `Age..BP.` < -8000 ~ "-10000 to -8000 ya",
+    `Age..BP.` >= -8000 & `Age..BP.` < -6000 ~ "-8000 to -6000 ya",
+    `Age..BP.` >= -6000 & `Age..BP.` < -4000 ~ "-6000 to -4000 ya",
+    `Age..BP.` >= -4000 & `Age..BP.` < -2000 ~ "-4000 to -2000 ya",
+    `Age..BP.` >= -2000 & `Age..BP.` < 0 ~ "-2000 ya to Present day",
+    TRUE ~ "Present Day"
+  ),
+  levels = c("-10000 to -8000 ya", "-8000 to -6000 ya", "-6000 to -4000 ya", "-4000 to -2000 ya", "-2000 ya to Present day", "Present Day")))
+
+
+g2 <- ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85", color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_jitter(mapping = aes(x = long, y = lat, color = Population, group = Population),
+              data = rest_samples_10k,
+              width = 0.75,  # Adjust width for jittering along the x-axis
+              height = 0.75  # Adjust height for jittering along the y-axis
+             ) +
+  coord_sf(crs = crs_goode, xlim = long_range, ylim = lat_range, default_crs = crs_goode) +
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank()) +
+  theme(axis.title.y = element_blank()) +
+  scale_color_manual(values = custom_colors) +
+  facet_col(facets = ~age_bracket)
+
+g2
+
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/plot_of_all_sample_ages_by_population.pdf", plot = g2, width = 11, height = 8.5)
+
+rest_samples_10k_long <- pivot_longer(rest_samples_10k, cols = c("hap1", "hap2"), names_to = "haplotype", values_to = "hap") 
+
+# Define your custom colors with named populations
+custom_colors <- c(
+  "H1" = "#00496F",
+  "H1D" = "#C4C856",
+  "H2" = "#ED9106",
+  "H2D" = "#dd4124"
+)
+
+g3 <- ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85", color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_jitter(mapping = aes(x = long, y = lat, color = hap, group = hap),
+              data = rest_samples_10k_long,
+              width = 0.75,  # Adjust width for jittering along the x-axis
+              height = 0.75  # Adjust height for jittering along the y-axis
+             ) +
+  coord_sf(crs = crs_goode, xlim = long_range, ylim = lat_range, default_crs = crs_goode) +
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank()) +
+  theme(axis.title.y = element_blank()) +
+  scale_color_manual(values = custom_colors) +
+  facet_col(facets = ~age_bracket)
+
+g3
+
+rest_samples_10k_pie <- rest_samples_10k %>%
+  mutate(hap1 = ifelse(hap1 == "H1DD", "H1D", hap1),
+         hap2 = ifelse(hap2 == "H1DD", "H1D", hap2)) %>%
+   mutate(age_bracket = factor(case_when(
+    `Age..BP.` >= -10000 & `Age..BP.` < -7500 ~ "-10000 to -7500 ya",
+    #`Age..BP.` >= -9000 & `Age..BP.` < -8000 ~ "-9000 to -8000 ya",
+    #`Age..BP.` >= -8000 & `Age..BP.` < -7000 ~ "-8000 to -7000 ya",
+    #`Age..BP.` >= -7000 & `Age..BP.` < -6000 ~ "-7000 to -6000 ya",
+    `Age..BP.` >= -7500 & `Age..BP.` < -5000 ~ "-7500 to -5000 ya",
+    #`Age..BP.` >= -5000 & `Age..BP.` < -4000 ~ "-5000 to -4000 ya",
+    #`Age..BP.` >= -4000 & `Age..BP.` < -3000 ~ "-4000 to -3000 ya",
+    #`Age..BP.` >= -3000 & `Age..BP.` < -2000 ~ "-3000 to -2000 ya",
+    `Age..BP.` >= -5000 & `Age..BP.` < -2500 ~ "-5000 to -2500 ya",
+    `Age..BP.` >= -2500 & `Age..BP.` < 0 ~ "-2500 ya to Present day",
+    TRUE ~ "Present Day"
+  ),
+  #levels = c("-10000 to -9000 ya","-9000 to -8000 ya","-8000 to -7000 ya", "-7000 to -6000 ya", "-6000 to -5000 ya","-5000 to -4000 ya", "-4000 to -3000 ya", "-3000 to -2000 ya", "-2000 to -1000 ya", "-1000 ya to Present day"))) %>%
+  levels = c("-10000 to -7500 ya","-7500 to -5000 ya","-5000 to -2500 ya", "-2500 ya to Present day"))) %>%
+  pivot_longer(cols = c("hap1", "hap2"), names_to = "haplotype", values_to = "hap") %>%
+  mutate(proportion = 0.5) %>%  # Each haplotype represents 50% of the pie
+  group_by(Sample, Population, age_bracket, Inversion, original_longitude, long, original_latitude, lat, hap) %>%  # Group by sample and metadata, including haplotypes
+  summarise(proportion = sum(proportion), .groups = 'drop') %>%  # Sum proportions for duplicate haplotypes
+  pivot_wider(names_from = hap, values_from = proportion, values_fill = list(proportion = 0))  # Reshape to wide format
+
+# Calculate a proportionate jitter based on the range of long and lat
+jitter_amount_long <- (max(rest_samples_10k_pie$long) - min(rest_samples_10k_pie$long)) * 0.065
+jitter_amount_lat <- (max(rest_samples_10k_pie$lat) - min(rest_samples_10k_pie$lat)) * 0.065
+
+# Add jitter to long and lat in the dataframe based on the calculated amount
+rest_samples_10k_pie <- rest_samples_10k_pie %>%
+  mutate(jittered_long = jitter(long, amount = jitter_amount_long),
+         jittered_lat = jitter(lat, amount = jitter_amount_lat))
+
+# Define custom colors for the haplotypes
+custom_colors <- c(
+  "H1" = "#00496F",
+  "H1D" = "#16879D",
+  "H2" = "#e27602",
+  "H2D" = "#ee9f27"
+)
+
+# Create the scatterpie plot with no borders and larger pies
+g4 <- ggplot(world_sf) + 
+  geom_sf(size = 0.5/.pt, fill="grey85", color="grey85") +
+  geom_sf(data = goode_without, fill = "white", color = "black") +
+  geom_scatterpie(data = rest_samples_10k_pie, 
+                  aes(x = jittered_long, y = jittered_lat), 
+                  cols = c("H1", "H1D", "H2", "H2D"),  # Haplotype columns
+                  pie_scale = 0.25,
+                  color = NA) +  # Remove borders from the pie charts
+  coord_sf(crs = crs_goode, xlim = long_range, ylim = lat_range, default_crs = crs_goode) +
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank()) +
+  scale_fill_manual(values = custom_colors) +  # Set the colors for each haplotype
+  facet_wrap(~age_bracket, nrow = 2) # Facet the plot by age bracket
+  #geom_text(data = rest_samples_10k_pie, aes(x = long, y = lat, label = Sample), size = 0.25, color = "red")# Add sample labels
+
+# Display the plot
+g4
+
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/plot_of_all_sample_ages_haplotypes_over_time.pdf", plot = g4, width = 11, height = 22)
+```
+
+```{r Plotting samples but NOT using the goode homolosine projection}
+# Calculate the range of longitude and latitude
+long_range <- range(scaled_data$original_longitude, na.rm = TRUE)
+lat_range <- range(scaled_data$original_latitude, na.rm = TRUE)
+
+# Load the world map data using longitude and latitude
+world_map <- map_data("world")
+
+# Calculate the range of longitude and latitude
+long_range <- range(scaled_data$original_longitude, na.rm = TRUE)
+lat_range <- range(scaled_data$original_latitude, na.rm = TRUE)
+
+# Plot the world map and points using Cartesian coordinates
+g_no_projection <- ggplot() + 
+  geom_polygon(data = world_map, aes(x = long, y = lat, group = group), fill = "grey85", color = "grey85") +
+  geom_jitter(mapping = aes(x = original_longitude, y = original_latitude, color = Population, group = Population),
+              data = scaled_data,
+              width = 0.75,  # Adjust width for jittering along the x-axis
+              height = 0.75  # Adjust height for jittering along the y-axis
+             ) +
+  coord_cartesian(xlim = long_range, ylim = lat_range) +  # Zoom to points region
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank()) +
+  scale_color_manual(values = custom_colors)
+
+g_no_projection
+
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/plot_of_all_sample_locations_NO_PROJ.pdf", plot = g_no_projection, width = 11, height = 4.25)
+
+# Define your custom colors with named populations
+custom_colors <- c(
+  "Early Farmer" = "#00496F",
+  "Yamnaya" = "#C4C856",
+  "Hunter-Gatherer (W)" = "#ED9106",
+  "Hunter-Gatherer (E)" = "#dd4124"
+)
+
+g1_no_projection <- ggplot() + 
+  geom_polygon(data = world_map, aes(x = long, y = lat, group = group), fill = "grey85", color = "grey85") +
+  geom_jitter(mapping = aes(x = original_longitude, y = original_latitude, color = `Age..BP.`, group = Population),
+              data = rest_samples,
+              width = 0.75,  # Adjust width for jittering along the x-axis
+              height = 0.75  # Adjust height for jittering along the y-axis
+             ) +
+  coord_cartesian(xlim = long_range, ylim = lat_range) +  # Zoom to points region
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank()) +
+  scale_color_gradient(low = "#00496F", high = "#C4C856", guide = guide_colorbar(title = "age (bp)"))
+
+g1_no_projection
+
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/plot_of_all_sample_ages_NO_PROJ.pdf", plot = g1_no_projection, width = 11, height = 4.25)
+
+# Plot the world map and points using Cartesian coordinates
+g2_no_projection <- ggplot() + 
+  geom_polygon(data = world_map, aes(x = long, y = lat, group = group), fill = "grey85", color = "grey85") +
+  geom_jitter(mapping = aes(x = original_longitude, y = original_latitude, color = Population, group = Population),
+              data = rest_samples_10k,
+              width = 0.75,  # Adjust width for jittering along the x-axis
+              height = 0.75  # Adjust height for jittering along the y-axis
+             ) +
+  coord_cartesian(xlim = long_range, ylim = lat_range) +  # Zoom to points region
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank()) +
+  scale_color_manual(values = custom_colors) +
+  facet_col(facets = ~age_bracket)
+
+g2_no_projection
+
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/plot_of_all_sample_ages_by_population_NO_PROJ.pdf", plot = g2_no_projection, width = 11, height = 8.5)
+
+# Define custom colors for the haplotypes
+custom_colors <- c(
+  "H1" = "#00496F",
+  "H1D" = "#16879D",
+  "H2" = "#e27602",
+  "H2D" = "#ee9f27"
+)
+
+# Add jitter to the longitude and latitude in the dataset
+rest_samples_10k_pie$jittered_longitude <- rest_samples_10k_pie$original_longitude + runif(nrow(rest_samples_10k_pie), -0.04, 0.04)
+rest_samples_10k_pie$jittered_latitude <- rest_samples_10k_pie$original_latitude + runif(nrow(rest_samples_10k_pie), -0.04, 0.04)
+
+g4_no_projection <- ggplot() +
+  geom_polygon(data = world_map, aes(x = long, y = lat, group = group), fill = "grey85", color = "grey85") +
+  geom_scatterpie(data = rest_samples_10k_pie, 
+                  aes(x = jittered_longitude, y = jittered_latitude),  # Use jittered columns
+                  cols = c("H1", "H1D", "H2", "H2D"),  # Haplotype columns
+                  pie_scale = 0.25,
+                  color = NA) +  # Remove borders from the pie charts
+  coord_fixed(ratio = 1) +
+  coord_cartesian(xlim = long_range, ylim = lat_range) +  # Zoom to points region
+  theme_minimal_grid() + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank()) +
+  scale_fill_manual(values = custom_colors) +
+  facet_wrap(~age_bracket, nrow = 2) 
+# Display the plot
+g4_no_projection
+
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/plot_of_all_sample_ages_haplotypes_over_time_NO_PROJ.pdf", plot = g4_no_projection, width = 32, height = 12)
+
+# Extract unique age brackets
+age_brackets <- unique(rest_samples_10k_pie$age_bracket)
+
+for (age in age_brackets) {
+  # Filter data for the current age bracket
+  filtered_data <- rest_samples_10k_pie[rest_samples_10k_pie$age_bracket == age, ]
+  
+  # Calculate the dynamic longitude and latitude ranges
+  long_range <- range(filtered_data$jittered_longitude, na.rm = TRUE)
+  lat_range <- range(filtered_data$jittered_latitude, na.rm = TRUE)
+  
+  # Create the plot with filtered data
+  plot <- ggplot() +
+    geom_polygon(data = world_map, aes(x = long, y = lat, group = group), fill = "grey85", color = "grey85") +
+    geom_scatterpie(data = filtered_data, 
+                    aes(x = jittered_longitude, y = jittered_latitude), 
+                    cols = c("H1", "H1D", "H2", "H2D"), 
+                    pie_scale = 0.25,
+                    color = NA) +
+    coord_fixed(ratio = 1) +
+    coord_cartesian(xlim = long_range, ylim = lat_range) +
+    theme_minimal_grid() + 
+    theme(axis.title.x = element_blank(),
+          axis.title.y = element_blank()) +
+    theme(legend.position = "none") +
+    scale_fill_manual(values = custom_colors) +
+    labs(title = paste(age))  # Optional: Add a title for clarity
+
+  # Define the filename dynamically based on the age bracket
+  filename <- paste0("~/Documents/figures/stone_age_eurasia/plot_", gsub(" ", "_", age), ".pdf")
+
+  # Save the plot to a PDF, adjusting the dimensions for an 8.5x11 page
+  ggsave(filename = filename, plot = plot, width = 15, height = 8.5)
+}
+```
+
+```{r FINAL plot over time scales}
+library(ggplot2)
+library(scatterpie)
+library(patchwork)
+
+# Initialize an empty list to store plots
+plot_list <- list()
+
+# Define the desired order of age brackets manually
+age_brackets_order <- c("-10000 to -7500 ya", "-7500 to -5000 ya", "-5000 to -2500 ya", "-2500 ya to Present day")  # Adjust to your desired order
+
+# Loop through the ordered age brackets and create each plot
+for (age in age_brackets_order) {
+  # Filter data for the current age bracket
+  filtered_data <- rest_samples_10k_pie[rest_samples_10k_pie$age_bracket == age, ]
+  
+  # Check if filtered_data has rows; if not, skip this iteration
+  if (nrow(filtered_data) == 0) {
+    next
+  }
+  
+  # Add jitter to the longitude and latitude in the filtered dataset
+  filtered_data$jittered_longitude <- filtered_data$original_longitude + runif(nrow(filtered_data), -0.04, 0.04)
+  filtered_data$jittered_latitude <- filtered_data$original_latitude + runif(nrow(filtered_data), -0.04, 0.04)
+  
+  # Calculate the dynamic longitude and latitude ranges
+  long_range <- range(filtered_data$jittered_longitude, na.rm = TRUE)
+  lat_range <- range(filtered_data$jittered_latitude, na.rm = TRUE)
+  
+  # Create the plot with filtered data
+  plot <- ggplot() +
+    geom_polygon(data = world_map, aes(x = long, y = lat, group = group), fill = "grey85", color = "grey85") +
+    geom_scatterpie(data = filtered_data, 
+                    aes(x = jittered_longitude, y = jittered_latitude), 
+                    cols = c("H1", "H1D", "H2", "H2D"), 
+                    pie_scale = 0.25,
+                    color = NA) +
+    coord_fixed(ratio = 1) +
+    coord_cartesian(xlim = long_range, ylim = lat_range) +
+    theme_minimal_grid() +  
+    theme(axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          legend.position = "none") +  # Remove the legend
+    scale_fill_manual(values = custom_colors) +
+    labs(title = paste(age))  # Optional: Add a title for clarity
+  
+  # Append the plot to the list
+  plot_list[[age]] <- plot
+}
+
+# Combine all the plots into a single figure panel using patchwork
+combined_plot <- patchwork::wrap_plots(plotlist = plot_list, ncol = 2)
+
+# Save the combined plot to a PDF
+ggsave(filename = "~/Documents/figures/stone_age_eurasia/combined_plot.pdf", 
+       plot = combined_plot, width = 15, height = 8.5)  # Adjust the dimensions as necessary
+```
+
+```{r trial run at kriging}
+library(sp)
+library(raster)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(ggplot2)
+library(sf)
+
+# Example data: Longitude, Latitude, and Category
+data <- data.frame(
+  lon = c(10, 12, 14, 16, 18, 20, -5, 0, 25, 30, -8, 2, 35, 8, 15, 19, 37, 22, 9, -3),
+  lat = c(45, 46, 47, 48, 49, 50, 40, 55, 42, 60, 43, 51, 36, 39, 53, 52, 41, 49, 38, 44),
+  category = c(1, 1, 2, 2, 3, 3, 1, 1, 2, 2, 3, 3, 1, 1, 2, 2, 3, 3, 1, 1)
+)
+
+# Select the category to interpolate (e.g., category = 2)
+selected_category <- 2
+data_selected <- data[data$category == selected_category, ]
+
+# Add small random noise to indicator values to create variation
+set.seed(42)
+data_selected$indicator <- 1 + rnorm(nrow(data_selected), mean = 0, sd = 0.1)
+
+# Convert data to spatial points dataframe
+coordinates(data_selected) <- ~lon + lat
+proj4string(data_selected) <- CRS("+proj=longlat +datum=WGS84")
+
+# Create a finer prediction grid over Europe and Greenland
+x.range <- seq(-50, 50, length.out = 300)  # Extended range to include Greenland
+y.range <- seq(35, 85, length.out = 300)
+grid <- expand.grid(lon = x.range, lat = y.range)
+
+# Define a custom IDW function
+idw_interpolate <- function(x, y, z, grid, power = 2) {
+  interpolated_values <- numeric(nrow(grid))
+  for (i in 1:nrow(grid)) {
+    distances <- sqrt((x - grid$lon[i])^2 + (y - grid$lat[i])^2)
+    weights <- 1 / (distances^power)
+    interpolated_values[i] <- sum(weights * z) / sum(weights)
+  }
+  return(interpolated_values)
+}
+
+# Apply the IDW function to interpolate values
+grid$predicted <- idw_interpolate(
+  x = coordinates(data_selected)[, 1],
+  y = coordinates(data_selected)[, 2],
+  z = data_selected$indicator,
+  grid = grid,
+  power = 2
+)
+
+# Convert grid to a raster
+raster_result <- rasterFromXYZ(grid[, c("lon", "lat", "predicted")])
+
+# Load the world map using rnaturalearth
+world_map <- ne_countries(scale = "medium", continent = NULL, returnclass = "sf")
+
+# Mask the raster using the world map boundaries (including Greenland)
+world_sp <- as(world_map, "Spatial")  # Convert sf to Spatial for masking
+raster_masked <- mask(raster_result, world_sp)  # Mask the raster
+
+# Convert the masked raster to a data frame for ggplot2
+raster_df <- as.data.frame(rasterToPoints(raster_masked))
+colnames(raster_df) <- c("lon", "lat", "value")
+
+# Convert data_selected back to a data frame for ggplot2
+data_selected_df <- as.data.frame(data_selected)
+
+# Determine plot limits based on the points with padding
+padding <- 2
+lon_limits <- range(data$lon) + c(-padding, padding)
+lat_limits <- range(data$lat) + c(-padding, padding)
+
+# Plot the masked raster over the world map with dynamic zoom
+ggplot() +
+  geom_sf(data = world_map, fill = "gray90", color = NA) +  # No borders
+  geom_raster(data = raster_df, aes(x = lon, y = lat, fill = value), 
+              interpolate = TRUE, alpha = 0.8) +
+  geom_point(data = data_selected_df, aes(x = lon, y = lat), 
+             color = "black", size = 1) +  # True points in black, small size
+  scale_fill_viridis_c(option = "C") +
+  coord_sf(xlim = lon_limits, ylim = lat_limits, expand = FALSE) +  # Dynamic limits
+  labs(title = paste("IDW Interpolation for Category", selected_category), fill = "Value") +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+
+```
+
+```{r trial run at kriging across 4 categories}
+# Adjust the indicator values to a smaller range
+set.seed(42)
+data$indicator <- runif(nrow(data), min = 1, max = 1.005)  # Closer range
+
+# Updated IDW interpolation function to prevent extreme weights
+idw_interpolate <- function(x, y, z, grid, power = 2) {
+  interpolated_values <- numeric(nrow(grid))
+  for (i in 1:nrow(grid)) {
+    distances <- sqrt((x - grid$lon[i])^2 + (y - grid$lat[i])^2)
+    distances[distances == 0] <- 1e-12  # Avoid division by zero
+    weights <- 1 / (distances^power)
+    interpolated_values[i] <- sum(weights * z) / sum(weights)
+  }
+  return(interpolated_values)
+}
+
+# Generate and plot interpolated grids
+plot_list <- list()
+
+for (cat in unique(data$category)) {
+  data_cat <- subset(data, category == cat)
+  coordinates(data_cat) <- ~lon + lat
+  proj4string(data_cat) <- CRS("+proj=longlat +datum=WGS84")
+  
+  # Perform IDW interpolation for the grid
+  grid$predicted <- idw_interpolate(
+    x = coordinates(data_cat)[, 1],
+    y = coordinates(data_cat)[, 2],
+    z = data_cat$indicator,
+    grid = grid,
+    power = 3  # Increased power for smoother interpolation
+  )
+  
+  grid$category <- cat
+  
+  # Mask the raster with the Europe map
+  raster_cat <- rasterFromXYZ(grid[, c("lon", "lat", "predicted")])
+  raster_masked <- mask(raster_cat, europe_sp)
+  
+  raster_df_cat <- as.data.frame(rasterToPoints(raster_masked))
+  colnames(raster_df_cat) <- c("lon", "lat", "value")
+  
+  # Create plot for the category
+  p <- ggplot() +
+    geom_raster(data = raster_df_cat, aes(x = lon, y = lat, fill = value),
+                interpolate = TRUE, alpha = 0.8) +
+    geom_point(data = as.data.frame(data_cat), aes(x = lon, y = lat),
+               color = "black", size = 1.5) +
+    scale_fill_viridis_c(option = "C", limits = c(1, 1.005), name = "Indicator") +
+    coord_sf(xlim = c(-10, 40), ylim = c(35, 70), expand = FALSE) +
+    labs(title = paste("Category", cat)) +
+    theme_minimal() +
+    theme(legend.position = "right", panel.grid = element_blank())
+  
+  plot_list[[as.character(cat)]] <- p
+}
+
+# Assemble and display the final plot
+final_plot <- wrap_plots(plotlist = plot_list, ncol = 2)
+print(final_plot)
+```
+
+```{r}
+# Updated plots with contour outlines and Europe map (no borders)
+plot_list <- list()
+
+for (cat in unique(data$category)) {
+  # Subset the data for the current category
+  data_cat <- subset(data, category == cat)
+  coordinates(data_cat) <- ~lon + lat
+  proj4string(data_cat) <- CRS("+proj=longlat +datum=WGS84")
+  
+  # Perform IDW interpolation for the grid
+  grid$predicted <- idw_interpolate(
+    x = coordinates(data_cat)[, 1],
+    y = coordinates(data_cat)[, 2],
+    z = data_cat$indicator,
+    grid = grid,
+    power = 3
+  )
+  
+  # Mask the raster with the Europe map
+  raster_cat <- rasterFromXYZ(grid[, c("lon", "lat", "predicted")])
+  raster_masked <- mask(raster_cat, europe_sp)
+  
+  raster_df_cat <- as.data.frame(rasterToPoints(raster_masked))
+  colnames(raster_df_cat) <- c("lon", "lat", "value")
+  
+  # Create a plot with contour lines and Europe map underneath
+  p <- ggplot() +
+    geom_sf(data = europe_map, fill = "gray90", color = NA) +  # Europe map with no borders
+    geom_contour(data = raster_df_cat, aes(x = lon, y = lat, z = value), 
+                 color = "black", size = 0.3) +  # Contour outlines
+    geom_point(data = as.data.frame(data_cat), aes(x = lon, y = lat), 
+               color = "black", size = 2) +  # Points for the category
+    coord_sf(xlim = c(-10, 40), ylim = c(35, 70), expand = FALSE) +  # Map limits
+    labs(title = paste("Category", cat)) +
+    theme_minimal() +
+    theme(legend.position = "none", panel.grid = element_blank())  # No legend or grid
+  
+  # Store the plot in the list
+  plot_list[[as.character(cat)]] <- p
+}
+
+# Assemble and display the final plot
+final_plot <- wrap_plots(plotlist = plot_list, ncol = 2)
+print(final_plot)
+```
+
+```{r using geometric densities}
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(sf)
+library(patchwork)
+
+# Load Europe map with high resolution
+europe_map <- ne_countries(scale = "medium", continent = "Europe", returnclass = "sf")
+
+# Function to generate clustered random points on landmasses in Europe
+generate_clustered_points <- function(n_points_per_cluster, n_clusters) {
+  set.seed(42)  # Ensure reproducibility
+  cluster_centers <- data.frame(
+    lon = c(10, 20, -3, 30, 15),  # Predefined cluster centers in Europe
+    lat = c(45, 55, 50, 60, 40)
+  )
+  
+  points <- data.frame(lon = numeric(0), lat = numeric(0))  # Initialize empty dataframe
+  
+  # Create clusters of points around the cluster centers
+  for (i in 1:n_clusters) {
+    cluster_points <- data.frame(
+      lon = rnorm(n_points_per_cluster, mean = cluster_centers$lon[i], sd = 2),  # Random longitude around center
+      lat = rnorm(n_points_per_cluster, mean = cluster_centers$lat[i], sd = 1.5)  # Random latitude around center
+    )
+    
+    # Convert to sf object for spatial filtering
+    cluster_sf <- st_as_sf(cluster_points, coords = c("lon", "lat"), crs = 4326)
+    
+    # Check which points intersect with the Europe map (landmass only)
+    valid_points <- st_intersection(cluster_sf, europe_map)
+    
+    # Add valid points to the final dataframe
+    points <- rbind(points, as.data.frame(st_coordinates(valid_points)))
+  }
+  
+  # Assign random categories to the points
+  points$category <- sample(1:3, nrow(points), replace = TRUE)
+  
+  return(points)
+}
+
+# Generate 400 random points in 5 clusters on landmasses in Europe
+clustered_points <- generate_clustered_points(n_points_per_cluster = 20, n_clusters = 10)
+
+# Initialize plot list
+plot_list <- list()
+
+# Create density-based contour plots for each category
+for (cat in unique(clustered_points$category)) {
+  # Subset data for the current category
+  data_cat <- subset(clustered_points, category == cat)
+  
+  # Create a plot with stat_density_2d for smooth contours
+  p <- ggplot() +
+    geom_sf(data = europe_map, fill = "gray90", color = NA) +  # Europe map without borders
+    stat_density_2d(
+      data = data_cat, 
+      aes(x = X, y = Y, fill = ..level..), 
+      geom = "polygon", 
+      alpha = 0.4, 
+      bins = 3,  # Reduce bins to form a single contour
+      adjust = 3  # Smoothing factor to merge regions
+    ) +
+    geom_point(data = data_cat, aes(x = X, y = Y), color = "black", size = 2) +  # Points
+    scale_fill_viridis_c(option = "C", name = "Density") +  # Adjust fill color
+    coord_sf(xlim = c(-10, 40), ylim = c(35, 70), expand = FALSE) +  # Map limits
+    labs(title = paste("Category", cat)) +
+    theme_minimal() +
+    theme(legend.position = "right", panel.grid = element_blank())  # No grid
+  
+  # Store the plot in the list
+  plot_list[[as.character(cat)]] <- p
+}
+
+# Assemble and display the final plot
+final_plot <- wrap_plots(plotlist = plot_list, ncol = 2)
+print(final_plot)
+
+```
+
+```{concave hulls around clusters}
+# Load necessary libraries
+library(sf)           # For spatial data handling
+library(ggplot2)      # For plotting
+library(rnaturalearth) # To get map data of Europe
+library(concaveman)   # For calculating concave hulls
+library(dbscan)       # For clustering
+
+# 1. Load Europe map data
+europe <- ne_countries(scale = "medium", returnclass = "sf", continent = "Europe")
+
+# 2. Generate test points across Europe
+set.seed(42)
+test_points <- data.frame(
+  lon = runif(50, min = -10, max = 30),  # Longitudes between -10 and 30
+  lat = runif(50, min = 35, max = 70)    # Latitudes between 35 and 70
+)
+
+# Convert points to an sf object
+points_sf <- st_as_sf(test_points, coords = c("lon", "lat"), crs = 4326)
+
+# 3. Cluster the points using DBSCAN
+clusters <- dbscan(test_points, eps = 5, minPts = 5)  # Adjust 'eps' and 'minPts' as needed
+
+# Add the cluster information to the sf object
+points_sf$cluster <- as.factor(clusters$cluster)
+
+# 4. Calculate concave hulls for each cluster
+concave_hulls <- points_sf %>%
+  split(.$cluster) %>%  # Split by cluster
+  lapply(function(cluster_points) {
+    if (nrow(cluster_points) > 2) {  # Ensure enough points for a concave hull
+      concaveman(cluster_points, concavity = 2)  # Adjust concavity as needed
+    } else {
+      NULL  # Handle cases with insufficient points
+    }
+  })
+
+# Remove NULLs and combine concave hulls into a single sf object
+concave_hulls_sf <- do.call(rbind, concave_hulls[!sapply(concave_hulls, is.null)])
+
+# 5. Plot the map, points, and concave hulls
+ggplot(data = europe) +
+  geom_sf() +  # Europe map
+  geom_sf(data = points_sf, aes(color = cluster), size = 2) +  # Plot points with cluster colors
+  geom_sf(data = concave_hulls_sf, fill = "blue", alpha = 0.3) +  # Concave hulls
+  theme_minimal() +
+  labs(title = "Concave Hulls Around Clusters on Europe Map")
+
+
+```
+
+```{r RERUN THE DATA WITH NEW METADATA}
+
+library(dplyr)
+library(ggplot2)
+library(cowplot)
+
+# Load metadata and merge datasets
+new_metadata <- read.csv("~/Documents/datasets/metadata/stoneageaurasia_REALMETADATA_s8.csv")
+
+new_StoneAge_dataset <- merge(age_bp_final, new_metadata, by.x = 'sample', by.y = 'Sample')
+
+new_StoneAge_dataset <- merge(age_bp_final, new_metadata, by = 'sample')
+
+
+# Select and clean columns
+new_StoneAge_dataset <- new_StoneAge_dataset %>%
+  dplyr::select("sample", "p2_l0", "p2_l1", "site", "country", "region", "age", 
+         "latitude.x", "longitude.x", "sector", "complex_genotype", "hap1", "hap2") %>%
+  mutate(
+    p2_l0 = case_when(
+      p2_l0 == "WHG" ~ "Hunter Gatherer (W)",
+      p2_l0 == "EHG" ~ "Hunter Gatherer (E)",
+      p2_l0 == "CHG" ~ "Hunter Gatherer (W)", # Moving CHG to EHG
+      p2_l0 == "Steppe pastoralists" ~ "Steppe Pastoralist",
+      p2_l0 == "Neolithic farmers" ~ "Neolithic Farmer",
+      p2_l0 == "Iron age to early modern" ~ "Iron Age to Early Modern",
+      p2_l0 == "Early farmers" ~ "Early Farmer",
+      p2_l0 == "Bronze age" ~ "Bronze Age",
+      TRUE ~ p2_l0
+    )
+  )
+
+# Calculate time ranges for each population
+time_ranges <- new_StoneAge_dataset %>%
+  group_by(p2_l0) %>%
+  summarize(
+    min_time = min(as.numeric(age) * -1 + 1, na.rm = TRUE),
+    max_time = max(as.numeric(age) * -1 + 1, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+# Order the factor levels by earliest start time
+ordered_levels <- time_ranges$p2_l0[order(time_ranges$min_time)]
+
+# Apply the factor order to both datasets
+new_StoneAge_dataset <- new_StoneAge_dataset %>%
+  mutate(p2_l0 = factor(p2_l0, levels = ordered_levels))
+
+# Calculate the counts (n) for each population
+time_ranges <- new_StoneAge_dataset %>%
+  group_by(p2_l0) %>%
+  summarize(
+    min_time = min(as.numeric(age) * -1 + 1, na.rm = TRUE),
+    max_time = max(as.numeric(age) * -1 + 1, na.rm = TRUE),
+    n = n(),  # Calculate the count for each population
+    .groups = 'drop'
+  )
+
+# Plot 1: Histogram with the correct factor order
+p1 <- ggplot(new_StoneAge_dataset, aes(x = as.numeric(age) * -1, fill = p2_l0)) +
+  geom_histogram(position = "dodge", binwidth = 350) +
+  theme_minimal() +
+  labs(x = "", y = "count") +
+  facet_wrap(~p2_l0, scales = 'free_y', ncol = 1) +
+  scale_y_continuous(
+    breaks = scales::pretty_breaks(n = 20),
+    labels = scales::number_format(accuracy = 1)
+  ) +
+  theme_minimal()
+
+bay_palette = pnw_palette("Starfish",7,type="discrete")
+
+p2 <- ggplot(time_ranges, aes(x = p2_l0, y = min_time, yend = max_time)) +
+  geom_segment(
+    aes(xend = `p2_l0`, y = min_time, yend = max_time),
+    color = "black",  # Set all bars to black
+    size = 9  # Adjust segment thickness
+  ) +
+  geom_text(
+    aes(label = paste0("(", n, ")"), y = max_time + 275),  
+    size = 5  # Adjust text size
+  ) +
+  coord_flip() +  # Flip coordinates for horizontal bars
+  labs(x = "population", y = "age (BP)") +  # Axis labels
+  theme_minimal() +  # Apply a minimal theme
+  theme(
+    axis.ticks.y = element_blank(),  # Remove y-axis ticks
+    panel.grid.major.y = element_blank(),  # Remove major grid lines
+    panel.grid.minor.y = element_blank(),  # Remove minor grid lines
+    legend.position = "none"  # Remove legend
+  )
+
+
+
+# Combine the two plots vertically
+final_plot <- cowplot::plot_grid(p1, p2, ncol = 1, align = "v", rel_heights = c(5.5, 1.5))
+
+# Save the final plot to a PDF
+ggsave(
+  filename = "~/Documents/figures/stone_age_eurasia/new_metadata/timeline.pdf",
+  plot = p2, width = 11, height = 3)
+```
+
+```{r}
+library(ggforce)
+
+library(tidyr)
+
+df_long <- new_StoneAge_dataset %>%
+  pivot_longer(
+    cols = c(hap1, hap2),
+    names_to = "haplotype",
+    values_to = "haplotype_val"
+  ) %>%
+  # Adjust age values by multiplying by -1
+  mutate(age = age * -1) %>%
+  # Fix the case_when logic for recoding haplotype_val
+  mutate(haplotype_val = case_when(
+    haplotype_val == "H1DD" ~ "H1D", 
+    TRUE ~ haplotype_val
+  )) %>% 
+  mutate(age_bracket = factor(
+    case_when(
+      age >= -10000 & age < -7500 ~ "-10k to -7.5kya",
+      age >= -7500 & age < -5000 ~ "-7.5 to -5kya",
+      age >= -5000 & age < -2500 ~ "-5 to -2.5 kya",
+      age >= -2500 & age <= 0 ~ "-2.5kya to Present",
+      TRUE ~ ">10kya"
+    ),
+    levels = c(">10kya", "-10k to -7.5kya", "-7.5 to -5kya",
+               "-5 to -2.5 kya", "-2.5kya to Present")))
+
+# Define custom colors for each haplotype
+haplotype_colors <- c(
+  "H1" = "#00496F",
+  "H1D" = "#C4C856",
+  "H2" = "#ED9106",
+  "H2D" = "#dd4124"
+)
+
+custom_colors <- c("H1" = "#00496F", "H1D"= "#16879D", "H2" = "#e27602", "H2D" = "#ee9f27")
+
+
+plot_facet <- ggplot() +
+  geom_polygon(
+    data = world_map,
+    aes(x = long, y = lat, group = group),
+    fill = "grey85", color = "grey85"
+  ) +
+  geom_point(
+    data = df_long,
+    aes(x = longitude, y = latitude, color = haplotype_val)
+  ) +
+  geom_mark_hull(
+    data = df_long,
+    aes(x = longitude, y = latitude, group = haplotype_val,
+        fill = haplotype_val),
+    expand = 0.03, alpha = 0.4, concavity = 0.075  # Tighter wrapping
+  ) +
+  coord_fixed(ratio = 1, xlim = long_range, ylim = lat_range) +
+  theme_minimal_grid() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.position = "bottom"
+  ) + 
+  facet_grid(age_bracket~haplotype_val) + 
+  scale_fill_manual(values = custom_colors) +  # Custom fill colors for hulls
+  scale_color_manual(values = custom_colors)   # Custom text colors
+  #facet_wrap(~age_bracket, ncol = 2)
+
+print(plot_facet)
+
+# Save the final plot to a PDF
+ggsave(
+  filename = "~/Documents/figures/stone_age_eurasia/new_metadata/haplotype_range.pdf",
+  plot = plot_facet, width = 18, height = 12)
+
+```
+
+```{r}
+library(ggforce)
+
+library(tidyr)
+
+df_long <- new_StoneAge_dataset %>%
+  pivot_longer(
+    cols = c(hap1, hap2),
+    names_to = "haplotype",
+    values_to = "haplotype_val"
+  ) %>%
+  # Adjust age values by multiplying by -1
+  mutate(age = age * -1) %>%
+  # Fix the case_when logic for recoding haplotype_val
+  mutate(haplotype_val = case_when(
+    haplotype_val == "H1DD" ~ "H1D", 
+    TRUE ~ haplotype_val
+  )) %>% 
+  mutate(age_bracket = factor(
+    case_when(
+      age >= -10000 & age < -7500 ~ "-10k to -7.5kya",
+      age >= -7500 & age < -5000 ~ "-7.5 to -5kya",
+      age >= -5000 & age < -2500 ~ "-5 to -2.5 kya",
+      age >= -2500 & age <= 0 ~ "-2.5kya to Present",
+      TRUE ~ ">10kya"
+    ),
+    levels = c(">10kya", "-10k to -7.5kya", "-7.5 to -5kya",
+               "-5 to -2.5 kya", "-2.5kya to Present")))
+
+# Define custom colors for each haplotype
+haplotype_colors <- c(
+  "H1" = "#00496F",
+  "H1D" = "#C4C856",
+  "H2" = "#ED9106",
+  "H2D" = "#dd4124"
+)
+
+plot_facet <- ggplot() +
+  geom_polygon(
+    data = world_map,
+    aes(x = long, y = lat, group = group),
+    fill = "grey85", color = "grey85"
+  ) +
+  geom_point(
+    data = df_long,
+    aes(x = longitude, y = latitude, color = `p2_l0`)
+  ) +
+  geom_mark_hull(
+    data = df_long,
+    aes(x = longitude, y = latitude, group = `p2_l0`, fill = `p2_l0`),
+    expand = 0.06, alpha = 0.4, concavity = 1  # Tighter wrapping
+  ) +
+  coord_fixed(ratio = 1, xlim = long_range, ylim = lat_range) +
+  theme_minimal_grid() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.position = "bottom"
+  ) + 
+  facet_grid(`age_bracket`~`p2_l0`) + 
+  scale_fill_manual(values = bay_pal) +  # Custom fill colors for hulls
+  scale_color_manual(values = bay_pal)   # Custom text colors
+  #facet_wrap(~age_bracket, ncol = 2)
+
+print(plot_facet)
+
+# Save the final plot to a PDF
+ggsave(
+  filename = "~/Documents/figures/stone_age_eurasia/new_metadata/geographic_range.pdf",
+  plot = plot_facet, width = 18, height = 12)
+```
+```{r logarithmic regression with the new metadata}
+library(effects)
+library(nnet)
+library(epiDisplay)
+library(janitor)
+
+age_bp_final <- new_StoneAge_dataset %>%
+  mutate(time_block = cut(
+    age,
+    breaks = seq(min(age, na.rm = TRUE), max(age, na.rm = TRUE) + 500, by = 500),
+    labels = paste(seq(min(age, na.rm = TRUE), max(age, na.rm = TRUE), by = 500),
+                   seq(min(age, na.rm = TRUE) + 500, max(age, na.rm = TRUE) + 500, by = 500), sep = "_"),
+    right = FALSE
+  )) %>%
+  mutate(time_midpoint = -1 * (-1 * (as.numeric(sub("_.*", "", time_block)) + 
+                                     as.numeric(sub(".*_", "", time_block))) / 2))
+
+# Combine hap1 and hap2 counts into one dataframe without population
+hap_counts_NO_POP <- age_bp_final %>%
+  tidyr::pivot_longer(cols = c(hap1, hap2), names_to = "haplotype_type", values_to = "haplotype") %>%
+  group_by(time_block, time_midpoint, haplotype) %>%
+  mutate(haplotype = ifelse(haplotype == "H1DD", "H1D", haplotype)) %>%
+  summarize(count = n(), .groups = 'drop')
+
+hap_counts_NO_POP <- hap_counts_NO_POP %>%
+  tidyr::complete(time_midpoint, haplotype, fill = list(count = 0)) 
+
+# Assuming your dataframe is named df
+hap_counts_NO_POP <- hap_counts_NO_POP %>%
+  group_by(time_midpoint) %>%
+  mutate(total_count = sum(count)) %>%  
+  ungroup() %>%
+  mutate(frequency = count / total_count) %>%
+  dplyr::select(time_midpoint, haplotype, count, total_count, frequency)
+
+new_StoneAge_dataset <- new_StoneAge_dataset %>% clean_names()
+
+multinom_reg <- new_StoneAge_dataset %>% 
+  pivot_longer(cols = c("hap1", "hap2"), values_to = "haplotype", names_to = "tmp") %>%
+  mutate(haplotype = ifelse(haplotype == "H1DD", "H1D", haplotype))
+
+# m = nnet::multinom(haplotype~age, data = multinom_reg)
+# z = summary(m)$coefficients/summary(m)$standard.errors
+# p = (1 - pnorm(abs(z), 0, 1))
+
+m = nnet::multinom(haplotype~time_midpoint, data = hap_counts_NO_POP)
+z = summary(m)$coefficients/summary(m)$standard.errors
+p = (1 - pnorm(abs(z), 0, 1))
+
+breaks = seq(-11000,0,100)
+
+dmodel = data.frame(hap_names = rep(unique(multinom_reg$haplotype),each=length(breaks)),age_bp=rep(breaks,4))
+
+dmodel$age_bp <- as.numeric(dmodel$age_bp)
+
+predictions <- predict(m, newdata = dmodel, type = "probs", se = TRUE)
+
+pp.model = cbind(dmodel %>% dplyr::select(age),predict(m, newdata=dmodel, type="probs", se=TRUE))
+
+
+
+plot_df = pp.model %>% 
+          pivot_longer(-c(age),names_to="haplotype",values_to="freq")
+
+# Define the custom colors
+custom_colors <- c("#00496F", "#16879D", "#e27602", "#ee9f27")
+names(custom_colors) <- c("H1", "H1D", "H2", "H2D")
+
+lr <- ggplot(data = plot_df, aes(x = age / 1000, y = freq, color = haplotype)) +
+  geom_line(size = 1.2) +
+  scale_color_manual(values = custom_colors) +
+  geom_point(data = hap_counts_NO_POP, aes(x = time_midpoint/1000*-1, y = frequency, color = haplotype, size = sqrt(total_count)), alpha = 0.6) + 
+  theme_minimal() +
+  xlab("kyr BP") +
+  ylab("frequency")
+
+#ggsave(filename = "~/Documents/figures/stone_age_eurasia/new_metadata/logarithmic_regression.pdf", plot = lr, width = 8.5, height = 4)
+
+```
+
+```{r}
+custom_colors <- c("H1" = "#00496F", "H1D"= "#16879D", "H2" = "#e27602", "H2D" = "#ee9f27")
+
+# Reverse the factor levels based on the existing order
+df_long <- df_long %>%
+  mutate(p2_l0 = factor(p2_l0, levels = rev(levels(factor(p2_l0)))))
+
+# Alternatively, if you want to specify the levels explicitly in reverse:
+# df_long <- df_long %>%
+#   mutate(p2_l0 = factor(p2_l0, levels = rev(c(
+#     "Iron Age to Early Modern", "Bronze Age", "Steppe Pastoralist",
+#     "Neolithic Farmer", "Early Farmer", "Hunter Gatherer (W)", "Hunter Gatherer (E)"
+#   ))))
+
+p11 <- ggplot(df_long, aes(x = as.numeric(age), fill = haplotype_val)) +
+  geom_histogram(
+    position = "stack",  # Use "dodge" if you prefer side-by-side bars
+    binwidth = 350, 
+    color = "black", 
+    alpha = 0.9  # Slight transparency for clarity
+  ) +
+  theme_minimal(base_size = 14) +
+  labs(x = "age (BP)", y = "count (N)", fill = "haplotype") +  # Rename legend title
+  facet_wrap(~p2_l0, scales = 'free_y', ncol = 1) +
+  scale_fill_manual(values = custom_colors) +
+  theme(
+    panel.grid.minor = element_blank(),  # Hide minor grid lines
+    panel.grid.major.x = element_blank(),  # Hide vertical grid lines
+    axis.text.y = element_text(size = 10),  # Control y-axis tick label size
+    legend.position = "bottom"  # Move legend to the bottom
+  )
+
+p11
+
+ggsave(
+  filename = "~/Documents/figures/stone_age_eurasia/new_metadata/haplotype_proportions.pdf",
+  plot = p11, width = 16, height = 8)
+```
+
+```{r}
+head(df_long)
+
+df_long_pie <- df_long %>% dplyr::select(sample, p2_l0, haplotype_val)
+
+proportion_df <- df_long_pie %>% 
+  group_by(`p2_l0`, haplotype_val) %>%
+  summarise(count = n(), .groups = "drop")
+
+stone_age_pie_data <- proportion_df %>% 
+  group_by(`p2_l0`) %>% 
+  mutate(proportion = count/sum(count)) %>% dplyr::select(`p2_l0`, proportion, haplotype_val) 
+#%>% pivot_wider(names_from = haplotype_val, values_from = proportion, values_fill = 0)
+
+
+# Function to generate a pie chart for each group
+generate_pie <- function(data, group_name) {
+  ggplot(data, aes(x = "", y = proportion, fill = haplotype_val)) +
+    geom_bar(stat = "identity", width = 1) +
+    coord_polar(theta = "y") +
+    theme_void() +
+    scale_fill_manual(values = custom_colors) +
+    #ggtitle(group_name) +
+    theme(legend.position = "none")  # Remove legend for individual pies
+}
+
+# Create individual pie charts for each group
+pie_plots <- stone_age_pie_data %>%
+  group_split(p2_l0) %>%
+  map(~ generate_pie(.x, unique(.x$p2_l0)))
+
+# Arrange pie charts in a single column
+p_pie <- wrap_plots(pie_plots, ncol = 1)
+
+combined_plot <- (p11 | p_pie) +
+  plot_layout(widths = c(10, 1))  # Adjust relative widths
+
+ggsave(
+  filename = "~/Documents/figures/stone_age_eurasia/new_metadata/histogram_with_pie.pdf",
+  plot = combined_plot, width = 16, height = 8)
+```
+
