@@ -1,0 +1,375 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-04-29"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#fn = "/Users/samvardhinisridharan/Documents/datasets/selected_hsa_nonhuman.paf"
+#fn = "/Users/samvardhinisridharan/Documents/datasets/selected_hsa.paf"
+#fn = "/Users/petersudmant/Documents/science/sudmantlab/projects/17q21.31_evolution/hap_assembly_plots/output/all_primates_PANPAN_GenomeArk.paf"
+#fn = "/Users/petersudmant/Documents/science/sudmantlab/projects/17q21.31_evolution/hap_assembly_plots/output/selected_hsa.paf"
+#fn = "/Users/samvardhinisridharan/Documents/datasets/temp_extended_primates.paf"
+#fn = "/Users/samvardhinisridharan/Downloads/extended_new_primates.paf"
+fn = "/Users/samvardhinisridharan/Documents/datasets/main_primates_temp_extended_primates.paf"
+#paf.file <- system.file(fn, package = "SVbyEye")
+#fn = "/Users/samvardhinisridharan/Documents/datasets/set_of_4.paf"
+
+#fn = "/Users/samvardhinisridharan/Downloads/SVByEye_extended (2).paf"
+paf.table <- readPaf(paf.file = fn, include.paf.tags = TRUE, restrict.paf.tags = "cg") 
+  #filter(q.name %in% c("JBHDWP010000059.1:7121601-9228037", "h2tg000020l:9468331-7414106"))
+
+#%>% filter(q.name %in% seqnames.order)
+#fn_out = "/Users/samvardhinisridharan/Documents/figures/selected_hsa_temp_primates_extended_hg.pdf"
+
+seqnames.order = c("HG00099#1#JBHDWO010000061.1",
+                    "HG00232#1#CM089999.1",
+                    "HG03732#2#haplotype2-0000081",
+                    "HG00864#2#haplotype2-0000060",
+                    "HG01352#2#haplotype2-0000166",
+                    "HG01505#2#haplotype2-0000149",
+                    "HG02165#1#CM087452.1",
+                    "NA20870#1#JBHIJK010000009.1",
+                    "HG02178#2#CM089945.1",
+                    "HG00140#2#JBHDVZ010000037.1",
+                    "HG00096#2#haplotype2-0000103")
+
+seqnames.order = c(
+  "chr19_hap2_hsa17:77931330-79243723",
+  #mPonAbe (non-divergent)
+  "chr19_hap1_hsa17:78393637-79708793",
+  #mPonPyg
+  "h2tg000018l:141690580-143346663",
+   "PR01223_hap1#chr19_hap1_hsa17:13841928-15461349",
+  "AG18355_8_hap2#chr19_hap1_hsa17:11792757-13440106",
+  "chr19_pat_hsa17:19514981-18094864", #bonobo invert
+  "HG00099#1#JBHDWO010000061.1",
+   "HG00096#2#haplotype2-0000103"
+)
+
+seqnames.order = c(
+  "PR01223_hap1#chr19_hap1_hsa17:13841928-15461349",
+    "chr19_pat_hsa17:19514981-18094864", 
+  "AG18355_8_hap2#chr19_hap1_hsa17:11792757-13440106",
+    "HG00099#1#JBHDWO010000061.1",
+   "HG00096#2#haplotype2-0000103",
+    "h2tg000018l:141690580-143346663"
+)
+
+seqnames.order = c("chr19_hap2_hsa17:77931330-79243723", #ponAbe_hap2
+                   "chr19_hap2_hsa17:74689985-76208916", #ponPyg_hap2
+                   "h2tg000018l:141790580-143426663", #Gorilla_PR00101_hap2
+                   "chr19_mat_hsa17:21631859-19961204", #mPanPan_alt
+                    "h1tg000076l:2073930-3663421", #mPanTRO_I_thought_inverted
+                   "h2tg000020l:9268331-7414106", #mPanTRO_INVERTED
+                   "JBHDWO010000061.1:6921601-8799467", #H1
+                   "HG00096#2#haplotype2-0000103") #H2
+                  
+
+# "chr19_hap2_hsa17:20806827-19139702", #mPanTro_hap2
+
+
+seqnames.order = c("h2tg000018l:141790580-143426663", #Gorilla_PR00101_hap2
+                                      "HG00096#2#haplotype2-0000103",
+                                      "HG00099#1#JBHDWO010000061.1", #H1
+                   "h2tg000020l:9268331-7414106",#mPanTRO_INVERTED
+                   "h1tg000076l:2073930-3663421") #mPanTRO_I_thought_inverted
+
+sample_renames <- c(
+  "chr19_hap2_hsa17:77931330-79243723" = "ponAbe_hap2",
+  "chr19_hap2_hsa17:74689985-76208916" = "ponPyg_hap2",
+  "h2tg000018l:141790580-145426663" = "Gorilla_PR00101_hap2",
+  "chr19_mat_hsa17:21631859-19961204" = "mPanPan_alt",
+  "h1tg000076l:2073930-3663421" = "mPanTRO_putative",
+  "h2tg000020l:9468331-7414106" = "mPanTRO_INVERTED",
+  "JBHDWP010000059.1:7121601-9228037" = "H1",
+  "HG00096#2#haplotype2-0000103" = "H2"
+)
+
+seqnames.order <- c(
+  "chr19_hap2_hsa17:77731330-79443723",
+  "chr19_hap2_hsa17:74689985-76308916",
+  "h2tg000018l:141590580-143626663",
+  "chr19_mat_hsa17:21731859-19861204",
+  "chr19_hap2_hsa17:20906827-19039702",
+  "h2tg000020l:9168331-7414106",
+  "JBHDWO010000061.1:6921601-8799467",
+  "haplotype2-0000103:38469201-36162765"
+)
+```
+
+```{r}
+paf.table.filt <- paf.table %>%
+  dplyr::filter(aln.len > 1e4) %>%
+  dplyr::filter(q.name == c("h2tg000018l:141790580-143426663","haplotype2-0000103:38269201-36162765", "h2tg000020l:9168331-7414106", "h1tg000076l:2073930-3663421"))
+
+
+paf.table.filt <- paf.table.filt %>%
+  dplyr::mutate(
+    q.name = dplyr::recode(q.name, !!!sample_renames),
+    t.name = dplyr::recode(t.name, !!!sample_renames)
+  )
+
+  #dplyr::filter(q.name %in% seqnames.order)
+#paf.table.filt = paf.table 
+#paf.table.filt = paf.table %>% filter(aln.len>5e4, mapq!=60)
+#paf.table.filt = paf.table
+#plotAVA(paf.table = paf.table, color.by = "direction")
+#g=plotAVA(paf.table = paf.table.filt, color.by = "identity", perc.identity.breaks = c(80, 90, 95))
+
+g=plotAVA(paf.table = paf.table %>%
+           # dplyr::filter(q.name %in% c("JBHDWO010000061.1:6921601-8799467","haplotype2-0000103:38469201-36162765", "chr19_hap2_hsa17:20906827-19039702", "h2tg000020l:9168331-7414106")) %>%
+            dplyr::filter(aln.len > 1e4), 
+          color.by = "direction", 
+          color.palette = c("+" = "#3C3C3C", "-" = "#C54B8C"), 
+          seqnames.order = seqnames.order)
+          #seqnames.order = c("JBHDWO010000061.1:6921601-8799467", "haplotype2-0000103:38469201-36162765", "chr19_hap2_hsa17:20906827-19039702", "h2tg000020l:9168331-7414106"))
+
+#plotAVA(paf.table = paf.table, binsize = 2000000)
+
+g <- plotAVA(
+  paf.table = paf.table.filt,
+  color.by = "direction",
+  color.palette = c("+" = "#3C3C3C", "-" = "#C54B8C"),
+  seqnames.order = names(sample_renames)  # or use renamed vector if plotAVA expects old names
+)
+
+pdf("~/Documents/figures/selected_hsa_temp_primates_extended_hg_NEW_subset.pdf", width=12.5, height=9.5)
+print(g)
+dev.off()
+```
+
+```{r}
+
+fn = "/Users/petersudmant/Documents/science/sudmantlab/projects/17q21.31_evolution/hap_assembly_plots/output/selected_hsa_nonhuman.paf"
+paf.file <- system.file(fn, package = "SVbyEye")
+paf.table <- readPaf(paf.file = fn, include.paf.tags = TRUE, restrict.paf.tags = "cg")
+fn_out = "/Users/petersudmant/Documents/science/sudmantlab/projects/17q21.31_evolution/hap_assembly_plots/output/17q21.31_all.pdf"
+
+seqnames.order = c("chr19_hap1_hsa17:75584353-76896074", #mPonAbe_hap1
+                   "chr19_hap1_hsa17:78393637-79708793", #mPonPyg_hap1
+                   "chr4_pat_hsa17x5:46994409-45343234", #mGorGor_pri
+                   "chr19_hap2_hsa17:20706827-19239702", #mPanTro3 #######
+                   #"PR01223_hap1#chr19_hap1_hsa17:13841928-15461349", #oddchimpa
+                   "chr19_pat_hsa17:19514981-18094864",  #mPanPan_pri
+                   "AG18355_8_hap2#chr19_hap1_hsa17:11792757-13440106", #inverted bonobo
+                   "AG18361_10_hap2#chr19_hap1_hsa17:10145820-11793192", #inverted bonobo
+                   "HG00099#1#JBHDWO010000061.1", #HSA direction
+                   "HG00096#2#haplotype2-0000103")
+
+paf.table.filt = paf.table %>% filter(aln.len>1e4)
+#paf.table.filt = paf.table %>% filter(aln.len>5e4, mapq!=60)
+#paf.table.filt = paf.table
+#plotAVA(paf.table = paf.table, color.by = "direction")
+#g=plotAVA(paf.table = paf.table.filt, color.by = "identity", perc.identity.breaks = c(80, 90, 95), seqnames.order = seqnames.order)
+g=plotAVA(paf.table = paf.table.filt, color.by = "direction", seqnames.order = seqnames.order)
+
+#plotAVA(paf.table = paf.table, binsize = 2000000)
+
+pdf(fn_out, width=8, height=6)
+print(g)
+dev.off()
+
+
+#paf.table$q.name %>% unique()
+```
+
+```{r}
+
+fn_out = "/Users/petersudmant/Documents/science/sudmantlab/projects/17q21.31_evolution/hap_assembly_plots/output/17q21.31_compare_HSA_bonobo_inv.pdf"
+
+seqnames.order = c("chr19_hap2_hsa17:20706827-19239702", #mPanTro3 #######
+                   "chr19_pat_hsa17:19514981-18094864",  #mPanPan_pri
+                   "AG18355_8_hap2#chr19_hap1_hsa17:11792757-13440106", #inverted bonobo
+                   "HG00099#1#JBHDWO010000061.1", #HSA direction
+                   "HG00096#2#haplotype2-0000103" #HSA inversion
+                   )
+
+  
+
+paf.table.filt = paf.table %>% filter(aln.len>1e4)
+#paf.table.filt = paf.table %>% filter(aln.len>5e4, mapq!=60)
+#paf.table.filt = paf.table
+#plotAVA(paf.table = paf.table, color.by = "direction")
+#g=plotAVA(paf.table = paf.table.filt, color.by = "identity", perc.identity.breaks = c(80, 90, 95), seqnames.order = seqnames.order)
+g=plotAVA(paf.table = paf.table.filt, color.by = "direction", seqnames.order = seqnames.order)
+
+g=plotAVA(paf.table = paf.table.filt, color.by = "direction")
+
+
+#plotAVA(paf.table = paf.table, binsize = 2000000)
+
+pdf(fn_out, width=8, height=6)
+print(g)
+dev.off()
+
+
+selected_indivs = c("AG18355_8_hap2#chr19_hap1_hsa17:11792757-13440106", "HG00096#2#haplotype2-0000103") #inv bonobo vs HSA H2
+paf.table.subset = paf.table.filt %>% filter(q.name %in% selected_indivs[1],
+                                           t.name %in% selected_indivs[2])
+g <- plotMiro(paf.table = paf.table.subset, color.by = "direction")
+
+fn_out = "/Users/petersudmant/Documents/science/sudmantlab/projects/17q21.31_evolution/hap_assembly_plots/output/17q21.31_compare_bonobo_inv_human_H2.pdf"
+pdf(fn_out, width=8, height=6)
+print(g)
+dev.off()
+
+
+selected_indivs = c("AG18355_8_hap2#chr19_hap1_hsa17:11792757-13440106", "HG00099#1#JBHDWO010000061.1") #inv bonobo vs HSA H1
+paf.table.subset = paf.table.filt %>% filter(q.name %in% selected_indivs[1],
+                                           t.name %in% selected_indivs[2])
+g <- plotMiro(paf.table = paf.table.subset, color.by = "direction")
+fn_out = "/Users/petersudmant/Documents/science/sudmantlab/projects/17q21.31_evolution/hap_assembly_plots/output/17q21.31_compare_bonobo_inv_human_H1.pdf"
+pdf(fn_out, width=8, height=6)
+print(g)
+dev.off()
+```
+
+```{r}
+fn = "/Users/samvardhinisridharan/Downloads/gorilla_by_all (1).paf"
+paf.table <- readPaf(paf.file = fn) 
+
+# Vector of queries to keep
+query_names <- c(
+  "JBHDWP010000059.1:7221601-9328037",
+  "haplotype2-0000103:38269201-36162765",
+  "h2tg000020l:9168331-7414106",
+  "chr19_mat_hsa17:21631859-19961204",
+  "chr19_hap2_hsa17:20806827-19139702",
+  "chr19_hap2_hsa17:77931330-79243723",
+  "chr19_hap2_hsa17:74689985-76208916"
+)
+
+# Define the target of interest
+target_name <- "h2tg000018l:141790580-143426663"
+
+# Subset the PAF table
+paf.filtered <- paf.table[
+  paf.table$q.name %in% query_names & paf.table$t.name == target_name,
+]
+
+
+# Set up the PDF output file
+pdf("/Users/samvardhinisridharan/Documents/figures/figures_panels/query_vs_target_alignments.pdf", width = 10, height = 10)
+
+# Loop through and print each plot to a new page
+for (q in query_names) {
+  paf.sub <- paf.filtered[paf.filtered$q.name == q, ]
+
+  g <- plotAVA(
+    paf.table = paf.sub,
+    color.by = "direction",
+    color.palette = c("+" = "#3C3C3C", "-" = "#C54B8C")
+  ) +
+    ggtitle(paste("Query:", q, "\nTarget:", target_name))
+
+  print(g)  # Send to PDF
+}
+
+# Close the PDF device
+dev.off()
+```
+
+```{r}
+fn = "/Users/samvardhinisridharan/Downloads/extended_new_primates.paf"
+#fn_2 = "/Users/samvardhinisridharan/Downloads/mPanPan_mPanTro.paf"
+
+#fn_out <- "/Users/samvardhinisridharan/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/selected_hsa_temp_primates_extended_hg_NEW.pdf"
+
+fn_out <- "/Users/samvardhinisridharan/Documents/figures/selected_hsa_temp_primates_extended_hg_NEW.pdf"
+
+paf.table <- readPaf(paf.file = fn, include.paf.tags = TRUE, restrict.paf.tags = "cg") 
+
+paf.table.filt = paf.table %>% filter(aln.len>1e4)
+
+#paf.table_2 <- readPaf(paf.file = fn_2, include.paf.tags = TRUE, restrict.paf.tags = "cg") 
+
+#paf.table_3 <- rbind(paf.table, paf.table_2)
+
+#paf.table.filt = paf.table_3 %>% filter(aln.len>1e4)
+
+g=plotAVA(paf.table = paf.table.filt, color.by = "direction")
+
+seqnames.order <- c(
+  "chr19_hap2_hsa17:77831330-79343723",
+  "chr19_hap2_hsa17:74689985-76308916",
+  "h2tg000018l:141590580-143626663",
+  "chr19_mat_hsa17:21731859-19861204",
+  "chr19_hap2_hsa17:20906827-19039702",  # <--- Missing one added here
+  #"h1tg000076l:2073930-3663421",
+  "h2tg000020l:9168331-7414106",
+  "JBHDWP010000059.1:7121601-9428037",
+  "haplotype2-0000103:38469201-36162765"
+)
+
+g=plotAVA(paf.table = paf.table.filt, color.by = "direction", seqnames.order = seqnames.order, color.palette = c("+" = "#3C3C3C", "-" = "#C54B8C"))
+
+pdf(fn_out, width=9, height=15)
+print(g)
+dev.off()
+
+#H2:H1:H1p:H2p
+filtered_samples <- c(
+  "chr19_hap2_hsa17:20906827-19039702",  # <--- Missing one added here
+  #"h1tg000076l:2073930-3663421",
+  "h2tg000020l:9168331-7414106",
+  "JBHDWP010000059.1:7121601-9428037",
+  "haplotype2-0000103:38469201-36162765"
+)
+
+paf.table.filt = paf.table_3 %>% filter(aln.len>1e4) %>% filter(q.name %in% filtered_samples)
+
+g=plotAVA(paf.table = paf.table.filt, color.by = "direction", seqnames.order = rev(filtered_samples), color.palette = c("+" = "#3C3C3C", "-" = "#C54B8C"))
+
+#H2:H1:H1p:H2p
+filtered_samples <- c(
+  "chr19_hap2_hsa17:20906827-19039702",  
+  "h2tg000020l:9168331-7414106",
+  "haplotype2-0000103:38469201-36162765",
+  "JBHDWP010000059.1:7121601-9428037"
+)
+
+g1=plotAVA(paf.table = paf.table.filt, color.by = "direction", seqnames.order = rev(filtered_samples), color.palette = c("+" = "#3C3C3C", "-" = "#C54B8C"))
+
+
+#H1:H2:H2p:H1p
+filtered_samples <- c(
+  "h2tg000020l:9168331-7414106",
+  "chr19_hap2_hsa17:20906827-19039702",  
+  "haplotype2-0000103:38469201-36162765",
+  "JBHDWP010000059.1:7121601-9428037"
+)
+
+g2=plotAVA(paf.table = paf.table.filt, color.by = "direction", seqnames.order = rev(filtered_samples), color.palette = c("+" = "#3C3C3C", "-" = "#C54B8C"))
+
+
+#H2:H1:H2p:H1p
+filtered_samples <- c("h2tg000020l:9168331-7414106",
+  "chr19_hap2_hsa17:20906827-19039702",  
+  "JBHDWP010000059.1:7121601-9428037",
+  "haplotype2-0000103:38469201-36162765"
+)
+
+paf.table.filt = paf.table_3 %>% filter(aln.len>1e4) %>% filter(q.name %in% filtered_samples)
+
+g3=plotAVA(paf.table = paf.table.filt, color.by = "direction", seqnames.order = rev(filtered_samples), color.palette = c("+" = "#3C3C3C", "-" = "#C54B8C"))
+
+library(gridExtra)
+
+# Arrange the plots in a 2x2 panel
+grid.arrange(
+  g, g1, g2, g3,
+  ncol = 2,
+  nrow = 2
+)
+
+fn_out = "/Users/samvardhinisridharan/Google Drive/Shared drives/sudmantlab/projects/17q21.31/figures/finalized_panels_and_figs/supplemental_figure_svbyeye_human_chimp_combos.pdf"
+pdf(fn_out, width=20, height=20)
+grid.arrange(g, g1, g2, g3, ncol = 2, nrow = 2)
+dev.off()
+```
+
