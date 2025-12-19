@@ -1,4 +1,4 @@
-Genotype assignments found here.
+Genotype assignments found [here](insights_from_ancient_genomes/ancient_17q_blocks_merged_Feb2022_final.tsv).
 
 To minimize technical artifacts, we filtered the dataset to retain only individuals with non-negative copy number estimates for both duplicated segments (H1D and H2D). We further excluded samples with unknown age or population labels, as well as individuals assigned to Africa, Asia, the Americas, or admixed populations. This filtering yielded a curated set of 644 ancient individuals from Eurasian populations.
 
