@@ -5,14 +5,14 @@ A repo for code and methods related to analyses and figures. This code is deposi
 
 ## Table of contents
 
-Human haplotype resolved structures of 17q21.31
+[Human haplotype resolved structures of 17q21.31](https://github.com/sudmantlab/17q21.31_SV_and_evolution/tree/4c6118d8e742a9d6aad471a423f00014bbda45a1/haplotype_resolved_structures)
 
-Primate haplotype resolved structures of 17q21.31
+[Primate haplotype resolved structures of 17q21.31](https://github.com/sudmantlab/17q21.31_SV_and_evolution/tree/4c6118d8e742a9d6aad471a423f00014bbda45a1/haplotype_resolved_structures)
 
-Dating human structures
+[Dating human structures](https://github.com/sudmantlab/17q21.31_SV_and_evolution/tree/main/dating_human_structures)
 
-Worldwide distribution of 17q21.31 diversity
+[Worldwide distribution of 17q21.31 diversity](https://github.com/sudmantlab/17q21.31_SV_and_evolution/tree/main/worldwide_distribution_of_diversity)
 
-PCA and double recombination
+[PCA and double recombination](https://github.com/sudmantlab/17q21.31_SV_and_evolution/tree/main/pca_and_double_recombination)
 
-Insights from ancient genomes
+[Insights from ancient genomes](https://github.com/sudmantlab/17q21.31_SV_and_evolution/tree/main/insights_from_ancient_genomes)
